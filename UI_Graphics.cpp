@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cmath>
+#include <vector>
 
 // 修复 Windows 没有 M_PI
 #ifndef M_PI
@@ -38,6 +39,23 @@ static inline int AIBaseX()
 static inline int AIBaseY()
 {
     return 380;
+}
+
+static const int BUTTON_WIDTH = 220;
+static const int BUTTON_HEIGHT = 40;
+static const int BUTTON_GAP = 8;
+
+static inline int ButtonsBaseX()
+{
+    return WINDOW_W - BUTTON_WIDTH - 30;
+}
+
+static inline int ButtonRowY(int row)
+{
+    const int totalHeight = 3 * BUTTON_HEIGHT + 2 * BUTTON_GAP;
+    int y = WINDOW_H - totalHeight - 30;
+    int minY = AIBaseY() + CARD_H + 10;
+    return std::max(y, minY) + row * (BUTTON_HEIGHT + BUTTON_GAP);
 }
 
 // 小号字体
@@ -260,12 +278,34 @@ UI_Graphics::UI_Graphics()
     state.aiScore = 0;
     state.playerScoreTemp = 0;
     state.aiScoreTemp = 0;
+    if (YSOK == backgroundMusic.LoadWav("las-vegas-407027.wav"))
+    {
+        backgroundLoaded = true;
+    }
+    else
+    {
+        printf("Failed to load background music.\n");
+    }
+}
+
+UI_Graphics::~UI_Graphics()
+{
+    if (backgroundLoaded)
+    {
+        soundPlayer.Stop(backgroundMusic);
+    }
+    soundPlayer.End();
 }
 
 void UI_Graphics::mainLoop()
 {
     FsOpenWindow(100, 100, WINDOW_W, WINDOW_H, 1, "Seven-Card Strategy Duel");
     glClearColor(0, 0, 0, 0);
+    soundPlayer.Start();
+    if (backgroundLoaded)
+    {
+        soundPlayer.PlayBackground(backgroundMusic);
+    }
 
     while (state.running)
     {
@@ -341,31 +381,29 @@ void UI_Graphics::drawTitle()
     drawText(330, 180, "Seven-Card Strategy Duel");
     DrawSmallText(400, 240, "Click START to play, or QUIT to exit.");
 
-    // START 按钮
-    int bx = 430, by = 300, bw = 200, bh = 60;
-    glColor3ub(80, 80, 80);
-    glBegin(GL_QUADS);
-    glVertex2i(bx, by);
-    glVertex2i(bx + bw, by);
-    glVertex2i(bx + bw, by + bh);
-    glVertex2i(bx, by + bh);
-    glEnd();
+    auto drawTitleButton = [&](int y, const char* label)
+    {
+        int bx = 430, bw = 200, bh = 60;
+        glColor3ub(80, 80, 80);
+        glBegin(GL_QUADS);
+        glVertex2i(bx, y);
+        glVertex2i(bx + bw, y);
+        glVertex2i(bx + bw, y + bh);
+        glVertex2i(bx, y + bh);
+        glEnd();
 
-    glColor3ub(255, 255, 255);
-    DrawSmallText(bx + 70, by + 35, "START");
+        glColor3ub(255, 255, 255);
+        DrawSmallText(bx + 50, y + 35, label);
+    };
 
-    // QUIT 按钮
-    by += 80;
-    glColor3ub(80, 80, 80);
-    glBegin(GL_QUADS);
-    glVertex2i(bx, by);
-    glVertex2i(bx + bw, by);
-    glVertex2i(bx + bw, by + bh);
-    glVertex2i(bx, by + bh);
-    glEnd();
+    drawTitleButton(300, "START");
+    drawTitleButton(380, "HOW TO PLAY");
+    drawTitleButton(460, "QUIT");
 
-    glColor3ub(255, 255, 255);
-    DrawSmallText(bx + 80, by + 35, "QUIT");
+    if (showInstructions)
+    {
+        drawInstructionsOverlay();
+    }
 }
 
 void UI_Graphics::drawPlayerHand()
@@ -409,6 +447,7 @@ void UI_Graphics::drawPlayerHand()
 
 void UI_Graphics::drawAIHand()
 {
+    glColor3ub(255, 0, 0);
     DrawSmallText(80, AIBaseY() - 20, "AI Final Hand:");
 
     int baseX = AIBaseX();
@@ -427,95 +466,94 @@ void UI_Graphics::drawAIHand()
     std::snprintf(roundBuf, sizeof(roundBuf),
         "Last Round  P = %d   AI = %d",
         state.playerScoreTemp, state.aiScoreTemp);
+    glColor3ub(255, 0, 0);
     DrawSmallText(80, AIBaseY() + CARD_H + 40, roundBuf);
 }
 
 void UI_Graphics::drawButtons()
 {
+    int bx = ButtonsBaseX();
+
+    auto drawButton = [&](int row, const char* label)
+    {
+        int by = ButtonRowY(row);
+        glColor3ub(50, 50, 50);
+        glBegin(GL_QUADS);
+        glVertex2i(bx, by);
+        glVertex2i(bx + BUTTON_WIDTH, by);
+        glVertex2i(bx + BUTTON_WIDTH, by + BUTTON_HEIGHT);
+        glVertex2i(bx, by + BUTTON_HEIGHT);
+        glEnd();
+
+        glColor3ub(255, 255, 255);
+        DrawSmallText(bx + BUTTON_WIDTH / 2 - 25, by + BUTTON_HEIGHT / 2 + 5, label);
+    };
+
     if (state.currentPhase == PLAYER_TURN)
     {
-        int bx = 930;
-        int by = 200;
-        int bw = 220;
-        int bh = 50;
-
-        // DONE
-        glColor3ub(50, 50, 50);
-        glBegin(GL_QUADS);
-        glVertex2i(bx, by);
-        glVertex2i(bx + bw, by);
-        glVertex2i(bx + bw, by + bh);
-        glVertex2i(bx, by + bh);
-        glEnd();
-        glColor3ub(255, 255, 255);
-        DrawSmallText(bx + 80, by + 30, "DONE");
-
-        // STAND
-        by += 70;
-        glColor3ub(50, 50, 50);
-        glBegin(GL_QUADS);
-        glVertex2i(bx, by);
-        glVertex2i(bx + bw, by);
-        glVertex2i(bx + bw, by + bh);
-        glVertex2i(bx, by + bh);
-        glEnd();
-        glColor3ub(255, 255, 255);
-        DrawSmallText(bx + 78, by + 30, "STAND");
-
-        // TITLE
-        by += 70;
-        glColor3ub(50, 50, 50);
-        glBegin(GL_QUADS);
-        glVertex2i(bx, by);
-        glVertex2i(bx + bw, by);
-        glVertex2i(bx + bw, by + bh);
-        glVertex2i(bx, by + bh);
-        glEnd();
-        glColor3ub(255, 255, 255);
-        DrawSmallText(bx + 84, by + 30, "TITLE");
+        drawButton(0, "DONE");
+        drawButton(1, "STAND");
+        drawButton(2, "TITLE");
     }
     else if (state.currentPhase == RESULT)
     {
-        int bx = 930;
-        int by = 200;
-        int bw = 220;
-        int bh = 50;
-
-        // AGAIN
-        glColor3ub(50, 50, 50);
-        glBegin(GL_QUADS);
-        glVertex2i(bx, by);
-        glVertex2i(bx + bw, by);
-        glVertex2i(bx + bw, by + bh);
-        glVertex2i(bx, by + bh);
-        glEnd();
-        glColor3ub(255, 255, 255);
-        DrawSmallText(bx + 80, by + 30, "AGAIN");
-
-        // TITLE
-        by += 70;
-        glColor3ub(50, 50, 50);
-        glBegin(GL_QUADS);
-        glVertex2i(bx, by);
-        glVertex2i(bx + bw, by);
-        glVertex2i(bx + bw, by + bh);
-        glVertex2i(bx, by + bh);
-        glEnd();
-        glColor3ub(255, 255, 255);
-        DrawSmallText(bx + 84, by + 30, "TITLE");
-
-        // QUIT
-        by += 70;
-        glColor3ub(50, 50, 50);
-        glBegin(GL_QUADS);
-        glVertex2i(bx, by);
-        glVertex2i(bx + bw, by);
-        glVertex2i(bx + bw, by + bh);
-        glVertex2i(bx, by + bh);
-        glEnd();
-        glColor3ub(255, 255, 255);
-        DrawSmallText(bx + 90, by + 30, "QUIT");
+        drawButton(0, "AGAIN");
+        drawButton(1, "TITLE");
+        drawButton(2, "QUIT");
     }
+}
+
+void UI_Graphics::drawInstructionsOverlay()
+{
+    glColor3ub(15, 15, 15);
+    glBegin(GL_QUADS);
+    glVertex2i(0, 0);
+    glVertex2i(WINDOW_W, 0);
+    glVertex2i(WINDOW_W, WINDOW_H);
+    glVertex2i(0, WINDOW_H);
+    glEnd();
+
+    glColor3ub(255, 255, 255);
+    drawText(WINDOW_W / 2 - 160, 120, "Game Instructions");
+
+    std::vector<std::string> lines = {
+        "Both you and the AI draw 7 cards.",
+        "Click on cards to select them, then press DONE to replace them.",
+        "Use STAND if you want to lock your current hand instead of swapping.",
+        "AI exchanges cards automatically once you finalize your choice.",
+        "The better poker hand wins the round, and the score is tracked below."
+    };
+    glColor3ub(220, 220, 220);
+    int textY = 180;
+    for (const auto& line : lines)
+    {
+        DrawSmallText(120, textY, line);
+        textY += 32;
+    }
+
+    int bx = (WINDOW_W - BUTTON_WIDTH) / 2;
+    int by = WINDOW_H - BUTTON_HEIGHT - 40;
+    glColor3ub(60, 60, 60);
+    glBegin(GL_QUADS);
+    glVertex2i(bx, by);
+    glVertex2i(bx + BUTTON_WIDTH, by);
+    glVertex2i(bx + BUTTON_WIDTH, by + BUTTON_HEIGHT);
+    glVertex2i(bx, by + BUTTON_HEIGHT);
+    glEnd();
+    glColor3ub(255, 255, 255);
+    DrawSmallText(bx + BUTTON_WIDTH / 2 - 35, by + BUTTON_HEIGHT / 2 + 5, "BACK");
+}
+
+bool UI_Graphics::clickInstructions(int mx, int my)
+{
+    return inside(mx, my, 430, 380, 200, 60);
+}
+
+bool UI_Graphics::clickInstructionsBack(int mx, int my)
+{
+    int bx = (WINDOW_W - BUTTON_WIDTH) / 2;
+    int by = WINDOW_H - BUTTON_HEIGHT - 40;
+    return inside(mx, my, bx, by, BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 
@@ -553,35 +591,35 @@ bool UI_Graphics::clickQuit(int mx, int my)
 {
     if (state.currentPhase == TITLE)
     {
-        return inside(mx, my, 430, 380, 200, 60);
+        return inside(mx, my, 430, 460, 200, 60);
     }
     // 结果界面右侧 QUIT
-    return inside(mx, my, 930, 200 + 70 + 70, 220, 50);
+    return inside(mx, my, ButtonsBaseX(), ButtonRowY(2), BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 bool UI_Graphics::clickDone(int mx, int my)
 {
-    return inside(mx, my, 930, 200, 220, 50);
+    return inside(mx, my, ButtonsBaseX(), ButtonRowY(0), BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 bool UI_Graphics::clickStand(int mx, int my)
 {
-    return inside(mx, my, 930, 270, 220, 50);
+    return inside(mx, my, ButtonsBaseX(), ButtonRowY(1), BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 bool UI_Graphics::clickAgain(int mx, int my)
 {
-    return inside(mx, my, 930, 200, 220, 50);
+    return inside(mx, my, ButtonsBaseX(), ButtonRowY(0), BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 bool UI_Graphics::clickTitle(int mx, int my)
 {
     if (state.currentPhase == PLAYER_TURN)
     {
-        return inside(mx, my, 930, 340, 220, 50);
+        return inside(mx, my, ButtonsBaseX(), ButtonRowY(2), BUTTON_WIDTH, BUTTON_HEIGHT);
     }
     // RESULT 中的 TITLE
-    return inside(mx, my, 930, 270, 220, 50);
+    return inside(mx, my, ButtonsBaseX(), ButtonRowY(1), BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 void UI_Graphics::processInput()
@@ -589,19 +627,41 @@ void UI_Graphics::processInput()
     int lb, mb, rb, mx, my;
     FsGetMouseState(lb, mb, rb, mx, my);
 
-    if (lb == 0)
+    const bool leftDown = (lb != 0);
+    if (!leftDown)
+    {
+        prevLeftButtonDown = false;
+        return;
+    }
+    if (prevLeftButtonDown)
     {
         return;
     }
+    prevLeftButtonDown = true;
 
     switch (state.currentPhase)
     {
     case TITLE:
+        if (showInstructions)
+        {
+            if (clickInstructionsBack(mx, my))
+            {
+                showInstructions = false;
+                state.needRedraw = true;
+            }
+            break;
+        }
+
         if (clickStart(mx, my))
         {
             logic.dealCards(state);
             state.selectedIndices.clear();
             state.currentPhase = PLAYER_TURN;
+            state.needRedraw = true;
+        }
+        else if (clickInstructions(mx, my))
+        {
+            showInstructions = true;
             state.needRedraw = true;
         }
         else if (clickQuit(mx, my))
