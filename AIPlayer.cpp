@@ -6,12 +6,7 @@ AIPlayer::AIPlayer(const std::string& mode)
 {
 }
 
-/*
- 简单 AI：
- - 保留所有组成对子/三条/四条的牌
- - 如果某个花色数量 ≥4，优先保留该花色的牌（冲同花）
- - 其他牌全部换掉
-*/
+
 std::vector<int> AIPlayer::decideCardsToReplace(const Hand& h) const
 {
     std::vector<int> toReplace;
@@ -39,7 +34,7 @@ std::vector<int> AIPlayer::decideCardsToReplace(const Hand& h) const
 
     bool keep[7] = { false,false,false,false,false,false,false };
 
-    // 1) 先保留所有属于对子及以上的牌
+
     for (int i = 0; i < n; ++i)
     {
         if (rankCount[cards[i].rank] >= 2)
@@ -48,7 +43,7 @@ std::vector<int> AIPlayer::decideCardsToReplace(const Hand& h) const
         }
     }
 
-    // 2) 再尝试冲同花：找到数量最多的花色
+
     int bestSuit = 0;
     int bestSuitCount = 0;
     for (int s = 0; s < 4; ++s)
@@ -70,7 +65,7 @@ std::vector<int> AIPlayer::decideCardsToReplace(const Hand& h) const
         }
     }
 
-    // 3) 未被标记为 keep 的牌，全部丢掉
+
     for (int i = 0; i < n; ++i)
     {
         if (!keep[i])

@@ -2,8 +2,10 @@
 #include "ysglfontdata.h"
 #include "Deck.h"
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cmath>
+#include <sstream>
 #include <vector>
 
 // 修复 Windows 没有 M_PI
@@ -278,6 +280,7 @@ UI_Graphics::UI_Graphics()
     state.aiScore = 0;
     state.playerScoreTemp = 0;
     state.aiScoreTemp = 0;
+    lastInteractionTime = std::chrono::steady_clock::now();
     if (YSOK == backgroundMusic.LoadWav("las-vegas-407027.wav"))
     {
         backgroundLoaded = true;
@@ -426,8 +429,69 @@ void UI_Graphics::drawPlayerHand()
         "Total Score  Player %d : AI %d",
         state.playerScore, state.aiScore);
     DrawSmallText(800, 60, scoreBuf);
+    int adviceBtnX = 60;
+    int adviceBtnY = WINDOW_H - 50;
+    int adviceBtnW = 140;
+    int adviceBtnH = 32;
+    glColor3ub(30, 30, 30);
+    glBegin(GL_QUADS);
+    glVertex2i(adviceBtnX, adviceBtnY);
+    glVertex2i(adviceBtnX + adviceBtnW, adviceBtnY);
+    glVertex2i(adviceBtnX + adviceBtnW, adviceBtnY + adviceBtnH);
+    glVertex2i(adviceBtnX, adviceBtnY + adviceBtnH);
+    glEnd();
+    glColor3ub(200, 20, 60);
+    glLineWidth(1.5f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2i(adviceBtnX, adviceBtnY);
+    glVertex2i(adviceBtnX + adviceBtnW, adviceBtnY);
+    glVertex2i(adviceBtnX + adviceBtnW, adviceBtnY + adviceBtnH);
+    glVertex2i(adviceBtnX, adviceBtnY + adviceBtnH);
+    glEnd();
+    glColor3ub(255, 255, 255);
+    DrawSmallText(adviceBtnX + 10, adviceBtnY + 20, showAdvice ? "Advice: ON" : "Advice: OFF");
 
-    // 画玩家 7 张牌
+    auto now = std::chrono::steady_clock::now();
+    double idleSeconds = std::chrono::duration<double>(now - lastInteractionTime).count();
+    bool idleForHint = idleSeconds >= 10.0;
+    bool adviceHint = showAdvice && idleForHint;
+    float advicePulse = 0.0f;
+    if (adviceHint)
+    {
+        double phase = std::fmod(idleSeconds - 10.0, 1.2);
+        advicePulse = 0.4f + 0.6f * static_cast<float>(0.5 * (std::sin(phase * 2.0 * M_PI) + 1.0));
+        glColor3ub(255, 120, 120);
+        DrawSmallText(adviceBtnX, adviceBtnY - 20, "Advice flashing: click to refresh tips!");
+    }
+    else if (showAdvice)
+    {
+        glColor3ub(200, 220, 255);
+        DrawSmallText(adviceBtnX, adviceBtnY - 20, "Advice panel active.");
+    }
+    else if (idleForHint)
+    {
+        glColor3ub(255, 190, 120);
+        DrawSmallText(adviceBtnX, adviceBtnY - 22, "Idle? Advice ready with a click.");
+        glColor3ub(255, 220, 220);
+        glLineWidth(1.8f);
+        glBegin(GL_LINE_LOOP);
+        glVertex2i(adviceBtnX - 3, adviceBtnY - 3);
+        glVertex2i(adviceBtnX + adviceBtnW + 3, adviceBtnY - 3);
+        glVertex2i(adviceBtnX + adviceBtnW + 3, adviceBtnY + adviceBtnH + 3);
+        glVertex2i(adviceBtnX - 3, adviceBtnY + adviceBtnH + 3);
+        glEnd();
+    }
+    if (advicePulse > 0.0f)
+    {
+        glLineWidth(1.5f + advicePulse * 3.0f);
+        glColor3ub(255, 200, 180);
+        glBegin(GL_LINE_LOOP);
+        glVertex2i(adviceBtnX - 2, adviceBtnY - 2);
+        glVertex2i(adviceBtnX + adviceBtnW + 2, adviceBtnY - 2);
+        glVertex2i(adviceBtnX + adviceBtnW + 2, adviceBtnY + adviceBtnH + 2);
+        glVertex2i(adviceBtnX - 2, adviceBtnY + adviceBtnH + 2);
+        glEnd();
+    }
     int baseX = PlayerBaseX();
     int baseY = PlayerBaseY();
 
@@ -442,6 +506,17 @@ void UI_Graphics::drawPlayerHand()
                 i) != state.selectedIndices.end();
 
         DrawCardAt(x, y, state.playerHand.cards[i], selected);
+    }
+
+    if (showAdvice)
+    {
+        bool pulseState = false;
+        if (adviceHint)
+        {
+            double phase = std::fmod(idleSeconds - 10.0, 1.0);
+            pulseState = phase < 0.5;
+        }
+        drawAdvicePanel(buildAdviceStrings(state.playerHand), advicePulse);
     }
 }
 
@@ -544,6 +619,175 @@ void UI_Graphics::drawInstructionsOverlay()
     DrawSmallText(bx + BUTTON_WIDTH / 2 - 35, by + BUTTON_HEIGHT / 2 + 5, "BACK");
 }
 
+std::vector<std::string> UI_Graphics::buildAdviceStrings(const Hand& hand) const
+{
+    std::vector<std::string> lines;
+    int rankCount[15] = {0};
+    int suitCount[4] = {0};
+
+    for (const auto& c : hand.cards)
+    {
+        if (2 <= c.rank && c.rank <= 14)
+        {
+            rankCount[c.rank]++;
+        }
+        if (0 <= c.suit && c.suit < 4)
+        {
+            suitCount[c.suit]++;
+        }
+    }
+
+    int maxRankCount = 0;
+    int maxRank = 2;
+    for (int r = 2; r <= 14; ++r)
+    {
+        if (rankCount[r] > maxRankCount)
+        {
+            maxRankCount = rankCount[r];
+            maxRank = r;
+        }
+    }
+
+    std::string typeLabel = "Hand outlook: ";
+    if (maxRankCount >= 4)
+    {
+        typeLabel += "Four-of-a-kind potential";
+    }
+    else if (maxRankCount == 3)
+    {
+        typeLabel += "Trips or full-house draw";
+    }
+    else if (maxRankCount == 2)
+    {
+        typeLabel += "Pair(s) to build on";
+    }
+    else
+    {
+        typeLabel += "High card, stay sharp on swaps";
+    }
+    lines.push_back(typeLabel);
+
+    int bestSuit = 0;
+    int bestSuitCount = 0;
+    const char* suitNames[] = {"♠ Spades", "♥ Hearts", "♣ Clubs", "♦ Diamonds"};
+    for (int s = 0; s < 4; ++s)
+    {
+        if (suitCount[s] > bestSuitCount)
+        {
+            bestSuitCount = suitCount[s];
+            bestSuit = s;
+        }
+    }
+    if (bestSuitCount >= 4)
+    {
+        std::string flushLine = "Flush draw on ";
+        flushLine += suitNames[bestSuit];
+        flushLine += " (" + std::to_string(bestSuitCount) + " cards).";
+        lines.push_back(flushLine);
+    }
+    else
+    {
+        std::string suitLine = "Favor " + std::string(suitNames[bestSuit]);
+        suitLine += " (" + std::to_string(bestSuitCount) + " cards)";
+        lines.push_back(suitLine);
+    }
+
+    auto replaceIndices = ai.decideCardsToReplace(hand);
+    if (!replaceIndices.empty())
+    {
+        std::ostringstream oss;
+        oss << "Replace " << replaceIndices.size() << " card";
+        if (replaceIndices.size() > 1)
+        {
+            oss << "s";
+        }
+        oss << ": ";
+        for (size_t i = 0; i < replaceIndices.size(); ++i)
+        {
+            oss << (replaceIndices[i] + 1);
+            if (i + 1 < replaceIndices.size())
+            {
+                oss << ", ";
+            }
+        }
+        oss << " (positions).";
+        lines.push_back(oss.str());
+    }
+    else
+    {
+        lines.push_back("Stand pat! This opening hand looks solid.");
+    }
+
+    return lines;
+}
+
+void UI_Graphics::drawAdvicePanel(const std::vector<std::string>& lines, float highlightIntensity)
+{
+    const int w = 520;
+    const int h = 160 + static_cast<int>(lines.size()) * 28;
+    const int x = 40;
+    const int y = 420;
+
+    glBegin(GL_QUADS);
+    glColor3ub(6, 6, 32);
+    glVertex2i(x, y);
+    glColor3ub(16, 16, 70);
+    glVertex2i(x + w, y);
+    glColor3ub(8, 8, 44);
+    glVertex2i(x + w, y + h);
+    glColor3ub(4, 4, 20);
+    glVertex2i(x, y + h);
+    glEnd();
+
+    float intensity = highlightIntensity;
+    if (intensity < 0.0f)
+    {
+        intensity = 0.0f;
+    }
+    else if (intensity > 1.0f)
+    {
+        intensity = 1.0f;
+    }
+    if (intensity > 0.0f)
+    {
+        glLineWidth(3.0f + 3.0f * intensity);
+        glColor4f(1.0f, 0.4f + 0.6f * intensity, 0.45f + 0.5f * intensity, 0.85f);
+    }
+    else
+    {
+        glLineWidth(2.0f);
+        glColor3ub(205, 70, 90);
+    }
+    glBegin(GL_LINE_LOOP);
+    glVertex2i(x, y);
+    glVertex2i(x + w, y);
+    glVertex2i(x + w, y + h);
+    glVertex2i(x, y + h);
+    glEnd();
+
+    glColor3ub(255, 255, 255);
+    DrawSmallText(x + 26, y + 34, "Player Advice Panel");
+
+    glColor3ub(220, 240, 255);
+    int textY = y + 66;
+    for (const auto& line : lines)
+    {
+        DrawSmallText(x + 26, textY, line);
+        textY += 30;
+    }
+
+    if (intensity > 0.0f)
+    {
+        glColor3ub(255, 180, 180);
+        DrawSmallText(x + 26, y + h - 12, "⚡ Flashing for extra guidance.");
+    }
+    else
+    {
+        glColor3ub(200, 200, 220);
+        DrawSmallText(x + 26, y + h - 12, "Idle to trigger a glow.");
+    }
+}
+
 bool UI_Graphics::clickInstructions(int mx, int my)
 {
     return inside(mx, my, 430, 380, 200, 60);
@@ -556,10 +800,19 @@ bool UI_Graphics::clickInstructionsBack(int mx, int my)
     return inside(mx, my, bx, by, BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
+bool UI_Graphics::clickAdviceButton(int mx, int my) const
+{
+    const int adviceBtnX = 60;
+    const int adviceBtnY = WINDOW_H - 50;
+    const int adviceBtnW = 140;
+    const int adviceBtnH = 32;
+    return inside(mx, my, adviceBtnX, adviceBtnY, adviceBtnW, adviceBtnH);
+}
+
 
 // ========== 输入处理 ==========
 
-bool UI_Graphics::inside(int mx, int my, int x, int y, int w, int h)
+bool UI_Graphics::inside(int mx, int my, int x, int y, int w, int h) const
 {
     return (mx >= x && mx <= x + w && my >= y && my <= y + h);
 }
@@ -638,6 +891,7 @@ void UI_Graphics::processInput()
         return;
     }
     prevLeftButtonDown = true;
+    lastInteractionTime = std::chrono::steady_clock::now();
 
     switch (state.currentPhase)
     {
@@ -672,6 +926,13 @@ void UI_Graphics::processInput()
 
     case PLAYER_TURN:
     {
+        if (clickAdviceButton(mx, my))
+        {
+            showAdvice = !showAdvice;
+            state.needRedraw = true;
+            break;
+        }
+
         int idx = cardAt(mx, my);
         if (idx != -1)
         {
