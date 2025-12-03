@@ -1,5 +1,6 @@
 #include "AIPlayer.h"
 #include <algorithm>
+#include <random>
 
 AIPlayer::AIPlayer(const std::string& mode)
     : mode(mode)
@@ -9,70 +10,115 @@ AIPlayer::AIPlayer(const std::string& mode)
 
 std::vector<int> AIPlayer::decideCardsToReplace(const Hand& h) const
 {
-    std::vector<int> toReplace;
+    return decideCardsMonteCarlo(h);
+}
+
+std::vector<int> AIPlayer::decideCardsMonteCarlo(const Hand& h) const
+{
+    std::vector<int> bestIndices;
     const auto& cards = h.cards;
     const int n = static_cast<int>(cards.size());
     if (n == 0)
     {
-        return toReplace;
+        return bestIndices;
     }
 
-    int rankCount[15] = { 0 }; // 2~14
-    int suitCount[4] = { 0 };  // 0~3
-
-    for (const auto& c : cards)
+    auto pool = BuildRemainingDeck(cards);
+    if (pool.empty())
     {
-        if (2 <= c.rank && c.rank <= 14)
-        {
-            rankCount[c.rank]++;
-        }
-        if (0 <= c.suit && c.suit < 4)
-        {
-            suitCount[c.suit]++;
-        }
+        return bestIndices;
     }
 
-    bool keep[7] = { false,false,false,false,false,false,false };
+    std::mt19937 rng(std::random_device{}());
 
+    Hand baseHand;
+    baseHand.cards = cards;
+    double bestScore = static_cast<double>(baseHand.evaluateHand());
 
-    for (int i = 0; i < n; ++i)
+    const int totalMask = 1 << n;
+    for (int mask = 1; mask < totalMask; ++mask)
     {
-        if (rankCount[cards[i].rank] >= 2)
-        {
-            keep[i] = true;
-        }
-    }
-
-
-    int bestSuit = 0;
-    int bestSuitCount = 0;
-    for (int s = 0; s < 4; ++s)
-    {
-        if (suitCount[s] > bestSuitCount)
-        {
-            bestSuitCount = suitCount[s];
-            bestSuit = s;
-        }
-    }
-    if (bestSuitCount >= 4)
-    {
+        std::vector<int> subset;
+        subset.reserve(n);
         for (int i = 0; i < n; ++i)
         {
-            if (cards[i].suit == bestSuit)
+            if (mask & (1 << i))
             {
-                keep[i] = true;
+                subset.push_back(i);
             }
         }
-    }
-
-
-    for (int i = 0; i < n; ++i)
-    {
-        if (!keep[i])
+        double estimated = EstimateSubsetValue(cards, subset, pool, rng);
+        if (estimated > bestScore + 1e-6)
         {
-            toReplace.push_back(i);
+            bestScore = estimated;
+            bestIndices = subset;
         }
     }
 
-    return toReplace;
+    return bestIndices;
+}
+
+std::vector<Card> AIPlayer::BuildRemainingDeck(const std::vector<Card>& handCards) const
+{
+    std::vector<Card> pool;
+    pool.reserve(52);
+    for (int s = 0; s < 4; ++s)
+    {
+        for (int r = 2; r <= 14; ++r)
+        {
+            Card c;
+            c.rank = r;
+            c.suit = s;
+            pool.push_back(c);
+        }
+    }
+
+    for (const auto& card : handCards)
+    {
+        auto it = std::find_if(pool.begin(), pool.end(), [&](const Card& c)
+            {
+                return c.rank == card.rank && c.suit == card.suit;
+            });
+        if (it != pool.end())
+        {
+            pool.erase(it);
+        }
+    }
+    return pool;
+}
+
+double AIPlayer::EstimateSubsetValue(const std::vector<Card>& baseCards,
+    const std::vector<int>& replaceIdx,
+    const std::vector<Card>& pool,
+    std::mt19937& rng) const
+{
+    if (replaceIdx.empty())
+    {
+        Hand h;
+        h.cards = baseCards;
+        return static_cast<double>(h.evaluateHand());
+    }
+    if (pool.size() < replaceIdx.size())
+    {
+        return 0.0;
+    }
+
+    double total = 0.0;
+    std::vector<Card> trialCards;
+    trialCards.reserve(baseCards.size());
+    std::vector<Card> shuffledPool = pool;
+
+    for (int sample = 0; sample < MONTE_CARLO_SAMPLES; ++sample)
+    {
+        trialCards = baseCards;
+        std::shuffle(shuffledPool.begin(), shuffledPool.end(), rng);
+        for (size_t i = 0; i < replaceIdx.size(); ++i)
+        {
+            trialCards[replaceIdx[i]] = shuffledPool[i];
+        }
+        Hand temp;
+        temp.cards = trialCards;
+        total += temp.evaluateHand();
+    }
+    return total / static_cast<double>(MONTE_CARLO_SAMPLES);
 }

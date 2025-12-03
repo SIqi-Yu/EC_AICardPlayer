@@ -1,36 +1,37 @@
 ﻿#include "UI_Graphics.h"
 #include "ysglfontdata.h"
 #include "Deck.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
 #include <sstream>
 #include <vector>
+#include <array>
 
-// 修复 Windows 没有 M_PI
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-// ---- 一些常量，方便统一改布局 ----
 static const int WINDOW_W = 1200;
 static const int WINDOW_H = 700;
 
-static const int CARD_W = 110;
-static const int CARD_H = 160;
-static const int CARD_GAP = 20;   // 牌与牌之间的水平间隔
+static const int CARD_W = 90;
+static const int CARD_H = 130;
+static const int CARD_GAP = 20;
+static const int CARD_X_OFFSET = 90;
 
-// 根据窗口宽度，把 7 张牌水平居中
 static inline int PlayerBaseX()
 {
     const int totalW = 7 * CARD_W + 6 * CARD_GAP;
-    return (WINDOW_W - totalW) / 2;
+    return (WINDOW_W - totalW) / 2 + CARD_X_OFFSET;
 }
 
 static inline int PlayerBaseY()
 {
-    return 140;
+    return 210;
 }
 
 static inline int AIBaseX()
@@ -40,12 +41,24 @@ static inline int AIBaseX()
 
 static inline int AIBaseY()
 {
-    return 380;
+    return 450;
+}
+
+static inline int CommunityBaseX()
+{
+    const int totalW = 3 * CARD_W + 2 * CARD_GAP;
+    return (WINDOW_W - totalW) / 2 + CARD_X_OFFSET;
+}
+
+static inline int CommunityBaseY()
+{
+    return 300;
 }
 
 static const int BUTTON_WIDTH = 220;
-static const int BUTTON_HEIGHT = 40;
-static const int BUTTON_GAP = 8;
+static const int BUTTON_HEIGHT = 32;
+static const int BUTTON_GAP = 4;
+static const int BASE_BET = 50;
 
 static inline int ButtonsBaseX()
 {
@@ -60,37 +73,36 @@ static inline int ButtonRowY(int row)
     return std::max(y, minY) + row * (BUTTON_HEIGHT + BUTTON_GAP);
 }
 
-// 小号字体
 static void DrawSmallText(int x, int y, const std::string& s)
 {
     glRasterPos2i(x, y);
     YsGlDrawFontBitmap12x16(s.c_str());
 }
 
-// 花色小图标（用简单几何图形近似扑克牌花色）
+static std::string DescribeHandScore(int score);
+
 static void DrawSuitSymbol(int cx, int cy, int suit)
 {
-    // suit: 0=♠,1=♥,2=♣,3=♦
     switch (suit)
     {
-    case 0: // ♠ 黑桃
+    case 0:
         glColor3ub(0, 0, 0);
         break;
-    case 1: // ♥ 红心
+    case 1:
         glColor3ub(220, 40, 40);
         break;
-    case 2: // ♣ 梅花
+    case 2:
         glColor3ub(0, 0, 0);
         break;
-    case 3: // ♦ 方块
+    case 3:
         glColor3ub(220, 40, 40);
         break;
     }
 
-    if (suit == 0) // ♠：一个上圆 + 下三角
+    if (suit == 0)
     {
         int r = 12;
-        glBegin(GL_TRIANGLE_FAN);          // 上半部圆
+        glBegin(GL_TRIANGLE_FAN);
         glVertex2i(cx, cy - 5);
         for (int i = 0; i <= 20; ++i)
         {
@@ -101,16 +113,16 @@ static void DrawSuitSymbol(int cx, int cy, int suit)
         }
         glEnd();
 
-        glBegin(GL_TRIANGLES);             // 下三角
+        glBegin(GL_TRIANGLES);
         glVertex2i(cx - r, cy - 5);
         glVertex2i(cx + r, cy - 5);
         glVertex2i(cx, cy + r + 8);
         glEnd();
     }
-    else if (suit == 1) // ♥：两个圆 + 下三角
+    else if (suit == 1)
     {
         int r = 10;
-        glBegin(GL_TRIANGLE_FAN);          // 左圆
+        glBegin(GL_TRIANGLE_FAN);
         glVertex2i(cx - r / 2, cy - 5);
         for (int i = 0; i <= 20; ++i)
         {
@@ -121,7 +133,7 @@ static void DrawSuitSymbol(int cx, int cy, int suit)
         }
         glEnd();
 
-        glBegin(GL_TRIANGLE_FAN);          // 右圆
+        glBegin(GL_TRIANGLE_FAN);
         glVertex2i(cx + r / 2, cy - 5);
         for (int i = 0; i <= 20; ++i)
         {
@@ -132,16 +144,15 @@ static void DrawSuitSymbol(int cx, int cy, int suit)
         }
         glEnd();
 
-        glBegin(GL_TRIANGLES);             // 下尖
+        glBegin(GL_TRIANGLES);
         glVertex2i(cx - r - 2, cy);
         glVertex2i(cx + r + 2, cy);
         glVertex2i(cx, cy + r + 10);
         glEnd();
     }
-    else if (suit == 2) // ♣：三个圆 + 柄
+    else if (suit == 2)
     {
         int r = 8;
-        // 上圆
         glBegin(GL_TRIANGLE_FAN);
         glVertex2i(cx, cy - r);
         for (int i = 0; i <= 20; ++i)
@@ -152,7 +163,6 @@ static void DrawSuitSymbol(int cx, int cy, int suit)
             glVertex2i(x, y);
         }
         glEnd();
-        // 左圆
         glBegin(GL_TRIANGLE_FAN);
         glVertex2i(cx - r, cy + 1);
         for (int i = 0; i <= 20; ++i)
@@ -163,7 +173,6 @@ static void DrawSuitSymbol(int cx, int cy, int suit)
             glVertex2i(x, y);
         }
         glEnd();
-        // 右圆
         glBegin(GL_TRIANGLE_FAN);
         glVertex2i(cx + r, cy + 1);
         for (int i = 0; i <= 20; ++i)
@@ -175,14 +184,13 @@ static void DrawSuitSymbol(int cx, int cy, int suit)
         }
         glEnd();
 
-        // 柄
         glBegin(GL_TRIANGLES);
         glVertex2i(cx - 4, cy + r + 3);
         glVertex2i(cx + 4, cy + r + 3);
         glVertex2i(cx, cy + r + 12);
         glEnd();
     }
-    else if (suit == 3) // ♦：菱形
+    else if (suit == 3)
     {
         int r = 13;
         glBegin(GL_QUADS);
@@ -194,7 +202,6 @@ static void DrawSuitSymbol(int cx, int cy, int suit)
     }
 }
 
-// 把 rank 转成 “A,K,Q,J,10,9,...”
 static std::string RankToString(int rank)
 {
     switch (rank)
@@ -210,10 +217,8 @@ static std::string RankToString(int rank)
     }
 }
 
-// 画单张牌
 static void DrawCardAt(int x, int y, const Card& c, bool selected)
 {
-    // 阴影
     glColor3ub(0, 0, 0);
     glBegin(GL_QUADS);
     glVertex2i(x + 4, y + 4);
@@ -222,7 +227,6 @@ static void DrawCardAt(int x, int y, const Card& c, bool selected)
     glVertex2i(x + 4, y + 4 + CARD_H);
     glEnd();
 
-    // 白色卡面
     glColor3ub(245, 245, 245);
     glBegin(GL_QUADS);
     glVertex2i(x, y);
@@ -231,7 +235,6 @@ static void DrawCardAt(int x, int y, const Card& c, bool selected)
     glVertex2i(x, y + CARD_H);
     glEnd();
 
-    // 黑色边框
     glColor3ub(40, 40, 40);
     glBegin(GL_LINE_LOOP);
     glVertex2i(x, y);
@@ -240,7 +243,6 @@ static void DrawCardAt(int x, int y, const Card& c, bool selected)
     glVertex2i(x, y + CARD_H);
     glEnd();
 
-    // 选中红框
     if (selected)
     {
         glColor3ub(220, 40, 40);
@@ -252,23 +254,19 @@ static void DrawCardAt(int x, int y, const Card& c, bool selected)
         glEnd();
     }
 
-    // rank 文本（左上角）
     std::string rStr = RankToString(c.rank);
     glColor3ub(0, 0, 0);
-    if (c.suit == 1 || c.suit == 3)  // 红色花色
+    if (c.suit == 1 || c.suit == 3)
     {
         glColor3ub(200, 40, 40);
     }
     DrawSmallText(x + 8, y + 20, rStr);
 
-    // suit 图标（中心位置）
     int cx = x + CARD_W / 2;
     int cy = y + CARD_H / 2;
     DrawSuitSymbol(cx, cy, c.suit);
 }
 
-
-// =================== UI_Graphics 成员实现 ===================
 
 UI_Graphics::UI_Graphics()
     : ai("Normal")
@@ -280,7 +278,12 @@ UI_Graphics::UI_Graphics()
     state.aiScore = 0;
     state.playerScoreTemp = 0;
     state.aiScoreTemp = 0;
+    state.roundBet = 0;
+    waitingForDoubleChoice = false;
     lastInteractionTime = std::chrono::steady_clock::now();
+    betStatusMessage.clear();
+    showEndPopup = false;
+    endPopupMessage.clear();
     if (YSOK == backgroundMusic.LoadWav("las-vegas-407027.wav"))
     {
         backgroundLoaded = true;
@@ -288,6 +291,22 @@ UI_Graphics::UI_Graphics()
     else
     {
         printf("Failed to load background music.\n");
+    }
+    if (YSOK == failSound.LoadWav("fail-234710.wav"))
+    {
+        failSoundLoaded = true;
+    }
+    else
+    {
+        printf("Failed to load fail sound.\n");
+    }
+    if (YSOK == successSound.LoadWav("purchase-success.wav"))
+    {
+        successSoundLoaded = true;
+    }
+    else
+    {
+        printf("Failed to load success sound.\n");
     }
 }
 
@@ -298,12 +317,85 @@ UI_Graphics::~UI_Graphics()
         soundPlayer.Stop(backgroundMusic);
     }
     soundPlayer.End();
+    if (titleBgTexture != 0)
+    {
+        glDeleteTextures(1, &titleBgTexture);
+        titleBgTexture = 0;
+    }
+    if (introTexture != 0)
+    {
+        glDeleteTextures(1, &introTexture);
+        introTexture = 0;
+    }
+    if (emblemTexture != 0)
+    {
+        glDeleteTextures(1, &emblemTexture);
+        emblemTexture = 0;
+    }
+}
+
+bool UI_Graphics::loadTextureFromFile(const std::string& path,
+                                      unsigned int& tex,
+                                      int& outW,
+                                      int& outH,
+                                      bool flipVertically)
+{
+    // Allow caller to control flipping so we don't unintentionally mirror icons
+    stbi_set_flip_vertically_on_load(flipVertically ? 1 : 0);
+    int w = 0, h = 0, comp = 0;
+    unsigned char* data = stbi_load(path.c_str(), &w, &h, &comp, 4);
+    if (!data)
+    {
+        std::fprintf(stderr, "Failed to load title background image: %s\n", path.c_str());
+        return false;
+    }
+
+    if (tex != 0)
+    {
+        glDeleteTextures(1, &tex);
+        tex = 0;
+    }
+
+    GLuint newTex = 0;
+    glGenTextures(1, &newTex);
+    glBindTexture(GL_TEXTURE_2D, newTex);
+    GLint prevUnpack = 0;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &prevUnpack);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, prevUnpack);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    stbi_image_free(data);
+
+    tex = newTex;
+    outW = w;
+    outH = h;
+    return true;
 }
 
 void UI_Graphics::mainLoop()
 {
     FsOpenWindow(100, 100, WINDOW_W, WINDOW_H, 1, "Seven-Card Strategy Duel");
     glClearColor(0, 0, 0, 0);
+    if (titleBgTexture == 0)
+    {
+        loadTextureFromFile("AdobeStock_267112986.jpeg", titleBgTexture, titleBgWidth, titleBgHeight, false);
+    }
+    if (introTexture == 0)
+    {
+        loadTextureFromFile("AdobeStock_512097593.jpeg", introTexture, introTexWidth, introTexHeight, false);
+    }
+    if (emblemTexture == 0)
+    {
+        // Keep emblem upright; the source image already has correct orientation.
+        loadTextureFromFile("AdobeStock_529389711.png", emblemTexture, emblemWidth, emblemHeight, false);
+    }
+    introStartTime = std::chrono::steady_clock::now();
+    introActive = true;
     soundPlayer.Start();
     if (backgroundLoaded)
     {
@@ -324,7 +416,14 @@ void UI_Graphics::mainLoop()
         if (state.needRedraw)
         {
             draw();
-            state.needRedraw = false;
+            if (introActive)
+            {
+                state.needRedraw = true;
+            }
+            else
+            {
+                state.needRedraw = false;
+            }
         }
 
         FsSleep(10);
@@ -332,11 +431,19 @@ void UI_Graphics::mainLoop()
 }
 
 
-// ========== 绘制相关 ==========
-
 void UI_Graphics::draw()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (introActive)
+    {
+        drawIntroSplash();
+        if (introActive)
+        {
+            FsSwapBuffers();
+            state.needRedraw = true;
+            return;
+        }
+    }
 
     switch (state.currentPhase)
     {
@@ -345,15 +452,26 @@ void UI_Graphics::draw()
         break;
     case PLAYER_TURN:
         drawPlayerHand();
+        drawCommunityCards();
+        drawRoundInfo();
         drawButtons();
         break;
     case AI_TURN:
         drawPlayerHand();
         drawButtons();
         break;
+    case REVEAL:
+        drawPlayerHand();
+        drawCommunityCards();
+        drawAIHand();
+        drawRoundInfo();
+        drawButtons();
+        break;
     case RESULT:
         drawPlayerHand();
+        drawCommunityCards();
         drawAIHand();
+        drawRoundInfo();
         drawButtons();
         break;
     default:
@@ -370,25 +488,164 @@ void UI_Graphics::drawText(int x, int y, const std::string& text)
     YsGlDrawFontBitmap20x32(text.c_str());
 }
 
+void UI_Graphics::drawBackgroundCanvas()
+{
+    if (titleBgTexture != 0)
+    {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, titleBgTexture);
+        glColor3ub(255, 255, 255);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex2i(0, 0);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex2i(WINDOW_W, 0);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex2i(WINDOW_W, WINDOW_H);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex2i(0, WINDOW_H);
+        glEnd();
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4ub(0, 0, 0, 190);
+        glBegin(GL_QUADS);
+        glVertex2i(0, 0);
+        glVertex2i(WINDOW_W, 0);
+        glVertex2i(WINDOW_W, WINDOW_H);
+        glVertex2i(0, WINDOW_H);
+        glEnd();
+        glDisable(GL_BLEND);
+    }
+    else
+    {
+        glBegin(GL_QUADS);
+        glColor3ub(8, 6, 20);
+        glVertex2i(0, 0);
+        glColor3ub(18, 10, 35);
+        glVertex2i(WINDOW_W, 0);
+        glColor3ub(4, 2, 12);
+        glVertex2i(WINDOW_W, WINDOW_H);
+        glColor3ub(2, 0, 6);
+        glVertex2i(0, WINDOW_H);
+        glEnd();
+    }
+}
+
+void UI_Graphics::drawIntroSplash()
+{
+    drawBackgroundCanvas();
+
+    auto now = std::chrono::steady_clock::now();
+    double elapsed = std::chrono::duration<double>(now - introStartTime).count();
+    const double duration = 3.2;
+    double t = std::min(elapsed, duration);
+    double progress = t / duration;
+    double scale = 1.15 - 0.2 * progress; // gently zoom out
+
+    double fadeStart = duration * 0.55;
+    double alpha = 1.0;
+    if (t > fadeStart)
+    {
+        alpha = std::max(0.0, 1.0 - (t - fadeStart) / (duration - fadeStart));
+    }
+
+    if (introTexture != 0)
+    {
+        double drawW = WINDOW_W * scale;
+        double drawH = WINDOW_H * scale;
+        double x0 = (WINDOW_W - drawW) / 2.0;
+        double y0 = (WINDOW_H - drawH) / 2.0;
+
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, introTexture);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4f(static_cast<float>(alpha), static_cast<float>(alpha),
+            static_cast<float>(alpha), static_cast<float>(alpha));
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 0.0f); glVertex2d(x0, y0);
+        glTexCoord2f(1.0f, 0.0f); glVertex2d(x0 + drawW, y0);
+        glTexCoord2f(1.0f, 1.0f); glVertex2d(x0 + drawW, y0 + drawH);
+        glTexCoord2f(0.0f, 1.0f); glVertex2d(x0, y0 + drawH);
+        glEnd();
+        glDisable(GL_BLEND);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
+    }
+
+    if (elapsed >= duration)
+    {
+        introActive = false;
+        state.needRedraw = true;
+    }
+    else
+    {
+        state.needRedraw = true;
+    }
+}
+
 void UI_Graphics::drawTitle()
 {
-    // 背景稍微灰一点
-    glColor3ub(30, 30, 30);
+    drawBackgroundCanvas();
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4ub(0, 0, 0, 180);
     glBegin(GL_QUADS);
-    glVertex2i(0, 0);
-    glVertex2i(WINDOW_W, 0);
-    glVertex2i(WINDOW_W, WINDOW_H);
-    glVertex2i(0, WINDOW_H);
+    glVertex2i(150, 110);
+    glVertex2i(WINDOW_W - 150, 110);
+    glVertex2i(WINDOW_W - 150, 220);
+    glVertex2i(150, 220);
     glEnd();
+    glDisable(GL_BLEND);
 
-    drawText(330, 180, "Seven-Card Strategy Duel");
-    DrawSmallText(400, 240, "Click START to play, or QUIT to exit.");
-
-    auto drawTitleButton = [&](int y, const char* label)
+    glColor3ub(240, 240, 255);
+    drawText(230, 150, "Seven-Card Strategy Duel");
+    glColor3ub(250, 197, 67);
+    DrawSmallText(360, 210, "Stack the odds · Double down · Rule the felt");
+    if (emblemTexture != 0)
     {
-        int bx = 430, bw = 200, bh = 60;
-        glColor3ub(80, 80, 80);
+        double targetH = 260.0; // enlarge emblem further
+        double aspect = (emblemHeight > 0) ? static_cast<double>(emblemWidth) / emblemHeight : 1.0;
+        double drawW = targetH * aspect;
+        double drawH = targetH;
+        double rightX = WINDOW_W + 70;
+        double leftX = rightX - drawW;
+        double y = 60;
+        glEnable(GL_TEXTURE_2D);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBindTexture(GL_TEXTURE_2D, emblemTexture);
+        glColor4ub(255, 255, 255, 255);
         glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 0.0f); glVertex2d(leftX, y);
+        glTexCoord2f(1.0f, 0.0f); glVertex2d(rightX, y);
+        glTexCoord2f(1.0f, 1.0f); glVertex2d(rightX, y + drawH);
+        glTexCoord2f(0.0f, 1.0f); glVertex2d(leftX, y + drawH);
+        glEnd();
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_BLEND);
+        glDisable(GL_TEXTURE_2D);
+    }
+
+    auto drawTitleButton = [&](int y, const char* label, unsigned char r, unsigned char g, unsigned char b)
+    {
+        int bx = 430, bw = 220, bh = 62;
+        glBegin(GL_QUADS);
+        glColor3ub(r / 2, g / 2, b / 2);
+        glVertex2i(bx, y);
+        glVertex2i(bx + bw, y);
+        glColor3ub(r, g, b);
+        glVertex2i(bx + bw, y + bh);
+        glVertex2i(bx, y + bh);
+        glEnd();
+
+        glColor3ub(255, 230, 190);
+        glLineWidth(2.0f);
+        glBegin(GL_LINE_LOOP);
         glVertex2i(bx, y);
         glVertex2i(bx + bw, y);
         glVertex2i(bx + bw, y + bh);
@@ -396,51 +653,105 @@ void UI_Graphics::drawTitle()
         glEnd();
 
         glColor3ub(255, 255, 255);
-        DrawSmallText(bx + 50, y + 35, label);
+        DrawSmallText(bx + bw / 2 - 35, y + bh / 2 + 5, label);
     };
 
-    drawTitleButton(300, "START");
-    drawTitleButton(380, "HOW TO PLAY");
-    drawTitleButton(460, "QUIT");
+    drawTitleButton(310, "START", 180, 50, 80);
+    drawTitleButton(400, "HOW TO PLAY", 80, 120, 200);
+    drawTitleButton(490, "QUIT", 120, 120, 120);
 
     if (showInstructions)
     {
         drawInstructionsOverlay();
     }
+    if (showEndPopup)
+    {
+        drawEndPopup();
+    }
+}
+
+static void DrawHiddenCardAt(int x, int y)
+{
+    glColor3ub(40, 40, 40);
+    glBegin(GL_QUADS);
+    glVertex2i(x, y);
+    glVertex2i(x + CARD_W, y);
+    glVertex2i(x + CARD_W, y + CARD_H);
+    glVertex2i(x, y + CARD_H);
+    glEnd();
+    glColor3ub(200, 40, 40);
+    glBegin(GL_LINE_LOOP);
+    glVertex2i(x, y);
+    glVertex2i(x + CARD_W, y);
+    glVertex2i(x + CARD_W, y + CARD_H);
+    glVertex2i(x, y + CARD_H);
+    glEnd();
+    glColor3ub(200, 200, 200);
+    DrawSmallText(x + CARD_W / 2 - 8, y + CARD_H / 2, "?");
 }
 
 void UI_Graphics::drawPlayerHand()
 {
-    // 背景
-    glColor3ub(0, 0, 0);
+    drawBackgroundCanvas();
+
+    const int headerH = 165;
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4ub(6, 5, 16, 230);
     glBegin(GL_QUADS);
     glVertex2i(0, 0);
     glVertex2i(WINDOW_W, 0);
-    glVertex2i(WINDOW_W, WINDOW_H);
-    glVertex2i(0, WINDOW_H);
+    glVertex2i(WINDOW_W, headerH);
+    glVertex2i(0, headerH);
+    glEnd();
+    glDisable(GL_BLEND);
+    glColor3ub(120, 80, 200);
+    glBegin(GL_QUADS);
+    glVertex2i(0, headerH - 3);
+    glVertex2i(WINDOW_W, headerH - 3);
+    glVertex2i(WINDOW_W, headerH);
+    glVertex2i(0, headerH);
     glEnd();
 
-    // 标题文字
-    drawText(80, 80, "Your Hand:");
+    glColor3ub(240, 240, 255);
+    drawText(60, 70, "Your Hand:");
 
-    // 分数显示在右上角
     char scoreBuf[128];
     std::snprintf(scoreBuf, sizeof(scoreBuf),
-        "Total Score  Player %d : AI %d",
+        "Score  P %d : AI %d",
         state.playerScore, state.aiScore);
-    DrawSmallText(800, 60, scoreBuf);
+    glColor3ub(255, 210, 110);
+    DrawSmallText(WINDOW_W - 320, 35, scoreBuf);
+    char chipBuf[128];
+    std::snprintf(chipBuf, sizeof(chipBuf),
+        "Chips  P %d : AI %d",
+        state.playerChips, state.aiChips);
+    glColor3ub(180, 230, 255);
+    DrawSmallText(WINDOW_W - 320, 65, chipBuf);
+
+    if (!state.communityCards.empty())
+    {
+        char sharedBuf[128];
+        std::snprintf(sharedBuf, sizeof(sharedBuf),
+            "Shared Cards: %d / %d cards revealed",
+            std::min(state.revealedCommunityCards, (int)state.communityCards.size()),
+            (int)state.communityCards.size());
+        glColor3ub(240, 235, 150);
+        DrawSmallText(60, headerH + 15, sharedBuf);
+    }
+
     int adviceBtnX = 60;
-    int adviceBtnY = WINDOW_H - 50;
+    int adviceBtnY = WINDOW_H - 55;
     int adviceBtnW = 140;
     int adviceBtnH = 32;
-    glColor3ub(30, 30, 30);
+    glColor3ub(20, 10, 20);
     glBegin(GL_QUADS);
     glVertex2i(adviceBtnX, adviceBtnY);
     glVertex2i(adviceBtnX + adviceBtnW, adviceBtnY);
     glVertex2i(adviceBtnX + adviceBtnW, adviceBtnY + adviceBtnH);
     glVertex2i(adviceBtnX, adviceBtnY + adviceBtnH);
     glEnd();
-    glColor3ub(200, 20, 60);
+    glColor3ub(255, 90, 90);
     glLineWidth(1.5f);
     glBegin(GL_LINE_LOOP);
     glVertex2i(adviceBtnX, adviceBtnY);
@@ -450,6 +761,17 @@ void UI_Graphics::drawPlayerHand()
     glEnd();
     glColor3ub(255, 255, 255);
     DrawSmallText(adviceBtnX + 10, adviceBtnY + 20, showAdvice ? "Advice: ON" : "Advice: OFF");
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4ub(10, 10, 16, 220);
+    glBegin(GL_QUADS);
+    glVertex2i(40, headerH + 25);
+    glVertex2i(WINDOW_W - 40, headerH + 25);
+    glVertex2i(WINDOW_W - 40, PlayerBaseY() + CARD_H + 30);
+    glVertex2i(40, PlayerBaseY() + CARD_H + 30);
+    glEnd();
+    glDisable(GL_BLEND);
 
     auto now = std::chrono::steady_clock::now();
     double idleSeconds = std::chrono::duration<double>(now - lastInteractionTime).count();
@@ -508,6 +830,31 @@ void UI_Graphics::drawPlayerHand()
         DrawCardAt(x, y, state.playerHand.cards[i], selected);
     }
 
+    if (state.currentPhase == PLAYER_TURN)
+    {
+        int infoTop = 100;
+        int infoBottom = 150;
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4ub(18, 15, 32, 220);
+        glBegin(GL_QUADS);
+        glVertex2i(40, infoTop);
+        glVertex2i(WINDOW_W - 40, infoTop);
+        glVertex2i(WINDOW_W - 40, infoBottom);
+        glVertex2i(40, infoBottom);
+        glEnd();
+        glDisable(GL_BLEND);
+
+        glColor3ub(255, 210, 150);
+        char hintBuf[128];
+        std::snprintf(hintBuf, sizeof(hintBuf),
+            "Select cards to swap (currently %zu chosen, up to 7).",
+            state.selectedIndices.size());
+        DrawSmallText(60, infoTop + 18, hintBuf);
+        glColor3ub(200, 220, 255);
+        DrawSmallText(60, infoTop + 38, "Click cards to toggle selection, DONE to draw new ones, STAND to keep.");
+    }
+
     if (showAdvice)
     {
         bool pulseState = false;
@@ -520,10 +867,138 @@ void UI_Graphics::drawPlayerHand()
     }
 }
 
+void UI_Graphics::drawCommunityCards()
+{
+    if (state.communityCards.empty())
+    {
+        return;
+    }
+
+    int baseX = CommunityBaseX();
+    int y = CommunityBaseY();
+    int total = static_cast<int>(state.communityCards.size());
+    int revealCount = state.currentPhase == RESULT ? total : state.revealedCommunityCards;
+
+    for (int i = 0; i < total; ++i)
+    {
+        int x = baseX + i * (CARD_W + CARD_GAP);
+        if (i < revealCount)
+        {
+            DrawCardAt(x, y, state.communityCards[i], false);
+        }
+        else
+        {
+            DrawHiddenCardAt(x, y);
+        }
+    }
+}
+
+void UI_Graphics::drawRoundInfo()
+{
+    if (state.currentPhase != REVEAL && state.currentPhase != RESULT)
+    {
+        return;
+    }
+
+    const int panelX = 50;
+    const int panelY = AIBaseY() + CARD_H + 20;
+    const int panelW = ButtonsBaseX() - panelX - 20;
+    const int panelH = (state.currentPhase == RESULT ? 130 : 80);
+    glColor3ub(16, 12, 24);
+    glBegin(GL_QUADS);
+    glVertex2i(panelX, panelY);
+    glVertex2i(panelX + panelW, panelY);
+    glVertex2i(panelX + panelW, panelY + panelH);
+    glVertex2i(panelX, panelY + panelH);
+    glEnd();
+    glColor3ub(220, 140, 70);
+    glBegin(GL_LINE_LOOP);
+    glVertex2i(panelX, panelY);
+    glVertex2i(panelX + panelW, panelY);
+    glVertex2i(panelX + panelW, panelY + panelH);
+    glVertex2i(panelX, panelY + panelH);
+    glEnd();
+
+    int x = panelX + 20;
+    int y = panelY + 30;
+
+    if (state.currentPhase == RESULT)
+    {
+        std::string playerDesc = DescribeHandScore(state.playerScoreTemp);
+        std::string aiDesc = DescribeHandScore(state.aiScoreTemp);
+        const char* winnerLabel = "Draw";
+        if (state.playerScoreTemp > state.aiScoreTemp)
+        {
+            winnerLabel = "Player";
+        }
+        else if (state.aiScoreTemp > state.playerScoreTemp)
+        {
+            winnerLabel = "AI";
+        }
+
+    glColor3ub(255, 210, 140);
+        DrawSmallText(x, y, ("Player: " + playerDesc).c_str());
+        y += 26;
+        glColor3ub(255, 140, 140);
+        DrawSmallText(x, y, ("AI: " + aiDesc).c_str());
+        y += 26;
+        glColor3ub(200, 255, 180);
+        DrawSmallText(x, y, ("Winner: " + std::string(winnerLabel)).c_str());
+        y += 26;
+
+        if (!betStatusMessage.empty())
+        {
+            glColor3ub(255, 220, 150);
+            DrawSmallText(x, y, betStatusMessage.c_str());
+            y += 24;
+        }
+
+        glColor3ub(220, 220, 220);
+        DrawSmallText(x, y, "Use AGAIN to re-deal or TITLE to exit.");
+        return;
+    }
+
+    if (state.currentPhase == REVEAL)
+    {
+        glColor3ub(255, 220, 150);
+        char bufStatus[160];
+        std::snprintf(bufStatus, sizeof(bufStatus),
+            "Bet: %d  Shared cards revealed %d / %d.",
+            state.roundBet,
+            state.revealedCommunityCards,
+            (int)state.communityCards.size());
+        DrawSmallText(x, y, bufStatus);
+        y += 26;
+
+        if (!betStatusMessage.empty())
+        {
+            glColor3ub(255, 210, 150);
+            DrawSmallText(x, y, betStatusMessage.c_str());
+            y += 24;
+        }
+
+        glColor3ub(255, 190, 120);
+        if (waitingForDoubleChoice)
+        {
+            DrawSmallText(x, y, "Choose DOUBLE or PASS. AI reacts after you.");
+        }
+        else if (state.revealedCommunityCards < (int)state.communityCards.size())
+        {
+            DrawSmallText(x, y, "Click REVEAL for the next shared card.");
+        }
+        else
+        {
+            DrawSmallText(x, y, "All shared cards revealed. Continue to showdown.");
+        }
+    }
+}
+
 void UI_Graphics::drawAIHand()
 {
     glColor3ub(255, 0, 0);
-    DrawSmallText(80, AIBaseY() - 20, "AI Final Hand:");
+    const bool showFinal = (state.currentPhase == RESULT);
+    const char* label = showFinal ? "AI Final Hand:" : "AI Hand (hidden):";
+    DrawSmallText(80, AIBaseY() - 20, label);
 
     int baseX = AIBaseX();
     int baseY = AIBaseY();
@@ -531,18 +1006,20 @@ void UI_Graphics::drawAIHand()
     for (int i = 0; i < (int)state.aiHand.cards.size(); ++i)
     {
         int x = baseX + i * (CARD_W + CARD_GAP);
-        int y = baseY;
-
-        DrawCardAt(x, y, state.aiHand.cards[i], false);
+        if (showFinal)
+        {
+            DrawCardAt(x, baseY, state.aiHand.cards[i], false);
+        }
+        else
+        {
+            DrawHiddenCardAt(x, baseY);
+        }
     }
 
-    // 显示本局得分
-    char roundBuf[128];
-    std::snprintf(roundBuf, sizeof(roundBuf),
-        "Last Round  P = %d   AI = %d",
-        state.playerScoreTemp, state.aiScoreTemp);
-    glColor3ub(255, 0, 0);
-    DrawSmallText(80, AIBaseY() + CARD_H + 40, roundBuf);
+    if (showFinal)
+    {
+        return;
+    }
 }
 
 void UI_Graphics::drawButtons()
@@ -552,8 +1029,19 @@ void UI_Graphics::drawButtons()
     auto drawButton = [&](int row, const char* label)
     {
         int by = ButtonRowY(row);
-        glColor3ub(50, 50, 50);
         glBegin(GL_QUADS);
+        glColor3ub(25, 18, 30);
+        glVertex2i(bx, by);
+        glColor3ub(55, 40, 70);
+        glVertex2i(bx + BUTTON_WIDTH, by);
+        glColor3ub(40, 20, 45);
+        glVertex2i(bx + BUTTON_WIDTH, by + BUTTON_HEIGHT);
+        glColor3ub(15, 8, 20);
+        glVertex2i(bx, by + BUTTON_HEIGHT);
+        glEnd();
+
+        glColor3ub(255, 200, 120);
+        glBegin(GL_LINE_LOOP);
         glVertex2i(bx, by);
         glVertex2i(bx + BUTTON_WIDTH, by);
         glVertex2i(bx + BUTTON_WIDTH, by + BUTTON_HEIGHT);
@@ -570,12 +1058,85 @@ void UI_Graphics::drawButtons()
         drawButton(1, "STAND");
         drawButton(2, "TITLE");
     }
+    else if (state.currentPhase == REVEAL)
+    {
+        if (waitingForDoubleChoice)
+        {
+            drawButton(0, "DOUBLE");
+            drawButton(1, "PASS");
+        }
+        else
+        {
+            if (state.revealedCommunityCards < (int)state.communityCards.size())
+            {
+                drawButton(0, "REVEAL");
+            }
+            else
+            {
+                drawButton(0, "SHOWDOWN");
+            }
+        }
+    }
     else if (state.currentPhase == RESULT)
     {
         drawButton(0, "AGAIN");
         drawButton(1, "TITLE");
         drawButton(2, "QUIT");
     }
+}
+
+static const char* HandCategoryName(int cat)
+{
+    switch (cat)
+    {
+    case 8: return "Straight Flush";
+    case 7: return "Four of a Kind";
+    case 6: return "Full House";
+    case 5: return "Flush";
+    case 4: return "Straight";
+    case 3: return "Three of a Kind";
+    case 2: return "Two Pair";
+    case 1: return "One Pair";
+    default: return "High Card";
+    }
+}
+
+static std::string RankName(int rank)
+{
+    if (rank <= 1)
+    {
+        return "A";
+    }
+    if (rank == 11) return "J";
+    if (rank == 12) return "Q";
+    if (rank == 13) return "K";
+    if (rank == 14) return "A";
+    return std::to_string(rank);
+}
+
+static std::string DescribeHandScore(int score)
+{
+    int category = score / 1000000;
+    int hi1 = (score / 10000) % 100;
+    int hi2 = (score / 100) % 100;
+    int hi3 = score % 100;
+
+    std::ostringstream oss;
+    oss << HandCategoryName(category);
+    if (hi1 > 0)
+    {
+        oss << " (" << RankName(hi1);
+        if (hi2 > 0 || hi3 > 0)
+        {
+            oss << "/" << RankName(hi2);
+            if (hi3 > 0)
+            {
+                oss << "/" << RankName(hi3);
+            }
+        }
+        oss << ")";
+    }
+    return oss.str();
 }
 
 void UI_Graphics::drawInstructionsOverlay()
@@ -592,11 +1153,15 @@ void UI_Graphics::drawInstructionsOverlay()
     drawText(WINDOW_W / 2 - 160, 120, "Game Instructions");
 
     std::vector<std::string> lines = {
-        "Both you and the AI draw 7 cards.",
-        "Click on cards to select them, then press DONE to replace them.",
-        "Use STAND if you want to lock your current hand instead of swapping.",
-        "AI exchanges cards automatically once you finalize your choice.",
-        "The better poker hand wins the round, and the score is tracked below."
+        "Both you and the AI draw 7 private cards. You may swap any of yours once.",
+        "Click cards to select them, then press DONE to draw new ones.",
+        "Use STAND if you want to keep the current hand and skip swapping.",
+        "Three shared cards sit between you and the AI. Reveal them one by one.",
+        "After every reveal, choose DOUBLE or PASS; the AI responds immediately.",
+        "Hands are compared using classic poker rankings (strongest to weakest):",
+        "  Straight Flush > Four of a Kind > Full House > Flush > Straight",
+        "  Three of a Kind > Two Pair > One Pair > High Card",
+        "Winner takes the current bet from the opponent's chip stack."
     };
     glColor3ub(220, 220, 220);
     int textY = 180;
@@ -617,6 +1182,53 @@ void UI_Graphics::drawInstructionsOverlay()
     glEnd();
     glColor3ub(255, 255, 255);
     DrawSmallText(bx + BUTTON_WIDTH / 2 - 35, by + BUTTON_HEIGHT / 2 + 5, "BACK");
+}
+
+void UI_Graphics::drawEndPopup()
+{
+    const int w = 500;
+    const int h = 220;
+    const int x = (WINDOW_W - w) / 2;
+    const int y = (WINDOW_H - h) / 2;
+
+    glColor4ub(0, 0, 0, 200);
+    glBegin(GL_QUADS);
+    glVertex2i(0, 0);
+    glVertex2i(WINDOW_W, 0);
+    glVertex2i(WINDOW_W, WINDOW_H);
+    glVertex2i(0, WINDOW_H);
+    glEnd();
+
+    glColor3ub(40, 40, 40);
+    glBegin(GL_QUADS);
+    glVertex2i(x, y);
+    glVertex2i(x + w, y);
+    glVertex2i(x + w, y + h);
+    glVertex2i(x, y + h);
+    glEnd();
+
+    glColor3ub(255, 255, 255);
+    DrawSmallText(x + 40, y + 40, "Match Result");
+
+    glColor3ub(255, 210, 140);
+    DrawSmallText(x + 40, y + 90, endPopupMessage);
+
+    glColor3ub(200, 200, 200);
+    DrawSmallText(x + 40, y + 130, "Click OK to return to the title screen.");
+
+    const int btnW = 100;
+    const int btnH = 40;
+    const int btnX = x + w / 2 - btnW / 2;
+    const int btnY = y + h - btnH - 30;
+    glColor3ub(90, 90, 90);
+    glBegin(GL_QUADS);
+    glVertex2i(btnX, btnY);
+    glVertex2i(btnX + btnW, btnY);
+    glVertex2i(btnX + btnW, btnY + btnH);
+    glVertex2i(btnX, btnY + btnH);
+    glEnd();
+    glColor3ub(255, 255, 255);
+    DrawSmallText(btnX + 30, btnY + 24, "OK");
 }
 
 std::vector<std::string> UI_Graphics::buildAdviceStrings(const Hand& hand) const
@@ -788,6 +1400,73 @@ void UI_Graphics::drawAdvicePanel(const std::vector<std::string>& lines, float h
     }
 }
 
+void UI_Graphics::settleRound()
+{
+    waitingForDoubleChoice = false;
+    int payout = state.roundBet;
+    if (state.playerScoreTemp == state.aiScoreTemp || payout <= 0)
+    {
+        betStatusMessage = "Round pushes. No chips exchanged.";
+        state.roundBet = 0;
+        state.needRedraw = true;
+    }
+    else
+    {
+        if (state.playerScoreTemp > state.aiScoreTemp)
+        {
+            int bet = std::min(payout, state.aiChips);
+            state.aiChips -= bet;
+            state.playerChips += bet;
+            char buf[128];
+            std::snprintf(buf, sizeof(buf), "Player wins %d chips!", bet);
+            betStatusMessage = buf;
+        }
+        else
+        {
+            int bet = std::min(payout, state.playerChips);
+            state.playerChips -= bet;
+            state.aiChips += bet;
+            char buf[128];
+            std::snprintf(buf, sizeof(buf), "AI wins %d chips.", bet);
+            betStatusMessage = buf;
+        }
+        state.roundBet = 0;
+        state.needRedraw = true;
+    }
+
+    if (state.playerChips <= 0 || state.aiChips <= 0)
+    {
+        showEndPopup = true;
+        if (state.playerChips <= 0 && state.aiChips <= 0)
+        {
+            endPopupMessage = "Both players went broke!";
+        }
+        else if (state.playerChips <= 0)
+        {
+            endPopupMessage = "You are out of chips. AI wins the match.";
+            if (failSoundLoaded)
+            {
+                soundPlayer.PlayOneShot(failSound);
+            }
+        }
+        else
+        {
+            endPopupMessage = "AI is out of chips. You win the match!";
+            if (successSoundLoaded)
+            {
+                soundPlayer.PlayOneShot(successSound);
+            }
+        }
+        state.currentPhase = TITLE;
+        waitingForDoubleChoice = false;
+        state.selectedIndices.clear();
+        state.revealedCommunityCards = 0;
+        betStatusMessage.clear();
+        showInstructions = false;
+        state.needRedraw = true;
+    }
+}
+
 bool UI_Graphics::clickInstructions(int mx, int my)
 {
     return inside(mx, my, 430, 380, 200, 60);
@@ -809,8 +1488,152 @@ bool UI_Graphics::clickAdviceButton(int mx, int my) const
     return inside(mx, my, adviceBtnX, adviceBtnY, adviceBtnW, adviceBtnH);
 }
 
+bool UI_Graphics::clickDouble(int mx, int my) const
+{
+    return inside(mx, my, ButtonsBaseX(), ButtonRowY(0), BUTTON_WIDTH, BUTTON_HEIGHT);
+}
 
-// ========== 输入处理 ==========
+bool UI_Graphics::clickPass(int mx, int my) const
+{
+    return inside(mx, my, ButtonsBaseX(), ButtonRowY(1), BUTTON_WIDTH, BUTTON_HEIGHT);
+}
+
+bool UI_Graphics::clickRevealNext(int mx, int my) const
+{
+    return inside(mx, my, ButtonsBaseX(), ButtonRowY(0), BUTTON_WIDTH, BUTTON_HEIGHT);
+}
+
+bool UI_Graphics::clickEndPopupOk(int mx, int my) const
+{
+    const int w = 500;
+    const int h = 220;
+    const int x = (WINDOW_W - w) / 2;
+    const int y = (WINDOW_H - h) / 2;
+    const int btnW = 100;
+    const int btnH = 40;
+    const int btnX = x + w / 2 - btnW / 2;
+    const int btnY = y + h - btnH - 30;
+    return inside(mx, my, btnX, btnY, btnW, btnH);
+}
+
+void UI_Graphics::revealNextCommunityCard()
+{
+    int total = static_cast<int>(state.communityCards.size());
+    if (state.revealedCommunityCards >= total)
+    {
+        concludeRevealIfReady();
+        return;
+    }
+
+    state.revealedCommunityCards++;
+    waitingForDoubleChoice = true;
+
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "Shared card %d revealed.", state.revealedCommunityCards);
+    betStatusMessage = buf;
+    state.needRedraw = true;
+}
+
+void UI_Graphics::handlePlayerBetChoice(bool doubleIt)
+{
+    if (doubleIt)
+    {
+        applyDouble(true);
+    }
+    else
+    {
+        betStatusMessage = "Player passes.";
+    }
+
+    handleAIDoubleDecision();
+    waitingForDoubleChoice = false;
+    concludeRevealIfReady();
+    state.needRedraw = true;
+}
+
+void UI_Graphics::handleAIDoubleDecision()
+{
+    if (state.playerChips <= 0 || state.aiChips <= 0)
+    {
+        return;
+    }
+
+    int maxBet = std::min(state.playerChips, state.aiChips);
+    if (maxBet <= 0)
+    {
+        return;
+    }
+
+    int revealed = state.revealedCommunityCards;
+    if (revealed <= 0)
+    {
+        return;
+    }
+
+    int aiScore = logic.evaluateWithCommunity(state.aiHand, state.communityCards, revealed);
+    int playerScore = logic.evaluateWithCommunity(state.playerHand, state.communityCards, revealed);
+    const int threshold = 200000;
+
+    if (aiScore > playerScore + threshold && state.roundBet < maxBet)
+    {
+        applyDouble(false);
+    }
+    else
+    {
+        if (betStatusMessage.empty())
+        {
+            betStatusMessage = "AI passes.";
+        }
+        else
+        {
+            betStatusMessage += " AI passes.";
+        }
+    }
+}
+
+void UI_Graphics::applyDouble(bool byPlayer)
+{
+    int maxBet = std::min(state.playerChips, state.aiChips);
+    if (maxBet <= 0)
+    {
+        betStatusMessage = "No chips left to raise.";
+        return;
+    }
+
+    if (state.roundBet <= 0)
+    {
+        state.roundBet = std::min(BASE_BET, maxBet);
+    }
+    else
+    {
+        state.roundBet = std::min(maxBet, state.roundBet * 2);
+    }
+
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "%s doubles! Bet is now %d.",
+        byPlayer ? "Player" : "AI", state.roundBet);
+    betStatusMessage = buf;
+}
+
+void UI_Graphics::concludeRevealIfReady()
+{
+    int total = static_cast<int>(state.communityCards.size());
+    if (state.revealedCommunityCards < total || waitingForDoubleChoice)
+    {
+        return;
+    }
+
+    int pScore = logic.evaluateWithCommunity(state.playerHand, state.communityCards, total);
+    int aScore = logic.evaluateWithCommunity(state.aiHand, state.communityCards, total);
+    logic.updateScore(state, pScore, aScore);
+    settleRound();
+    if (showEndPopup)
+    {
+        return;
+    }
+    state.currentPhase = RESULT;
+    state.needRedraw = true;
+}
 
 bool UI_Graphics::inside(int mx, int my, int x, int y, int w, int h) const
 {
@@ -836,7 +1659,6 @@ int UI_Graphics::cardAt(int mx, int my)
 
 bool UI_Graphics::clickStart(int mx, int my)
 {
-    // 标题界面 START 按钮范围
     return inside(mx, my, 430, 300, 200, 60);
 }
 
@@ -846,7 +1668,6 @@ bool UI_Graphics::clickQuit(int mx, int my)
     {
         return inside(mx, my, 430, 460, 200, 60);
     }
-    // 结果界面右侧 QUIT
     return inside(mx, my, ButtonsBaseX(), ButtonRowY(2), BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
@@ -871,12 +1692,15 @@ bool UI_Graphics::clickTitle(int mx, int my)
     {
         return inside(mx, my, ButtonsBaseX(), ButtonRowY(2), BUTTON_WIDTH, BUTTON_HEIGHT);
     }
-    // RESULT 中的 TITLE
     return inside(mx, my, ButtonsBaseX(), ButtonRowY(1), BUTTON_WIDTH, BUTTON_HEIGHT);
 }
 
 void UI_Graphics::processInput()
 {
+    if (introActive)
+    {
+        return;
+    }
     int lb, mb, rb, mx, my;
     FsGetMouseState(lb, mb, rb, mx, my);
 
@@ -896,6 +1720,16 @@ void UI_Graphics::processInput()
     switch (state.currentPhase)
     {
     case TITLE:
+        if (showEndPopup)
+        {
+            if (clickEndPopupOk(mx, my))
+            {
+                showEndPopup = false;
+                state.needRedraw = true;
+            }
+            break;
+        }
+
         if (showInstructions)
         {
             if (clickInstructionsBack(mx, my))
@@ -908,8 +1742,15 @@ void UI_Graphics::processInput()
 
         if (clickStart(mx, my))
         {
+            state.playerChips = 1000;
+            state.aiChips = 1000;
+            state.playerScore = 0;
+            state.aiScore = 0;
             logic.dealCards(state);
             state.selectedIndices.clear();
+            state.roundBet = 0;
+            waitingForDoubleChoice = false;
+            betStatusMessage.clear();
             state.currentPhase = PLAYER_TURN;
             state.needRedraw = true;
         }
@@ -961,11 +1802,14 @@ void UI_Graphics::processInput()
             auto aiIndices = ai.decideCardsToReplace(state.aiHand);
             logic.replaceCards(state.aiHand, aiIndices, deck);
 
-            int pScore = logic.evaluate(state.playerHand);
-            int aScore = logic.evaluate(state.aiHand);
-            logic.updateScore(state, pScore, aScore);
-
-            state.currentPhase = RESULT;
+            state.currentPhase = REVEAL;
+            state.revealedCommunityCards = 0;
+            state.playerScoreTemp = 0;
+            state.aiScoreTemp = 0;
+            int baseBet = std::min(BASE_BET, std::min(state.playerChips, state.aiChips));
+            state.roundBet = baseBet;
+            waitingForDoubleChoice = false;
+            betStatusMessage = "Shared cards hidden. Click REVEAL to continue.";
             state.needRedraw = true;
         }
         else if (clickStand(mx, my))
@@ -976,32 +1820,92 @@ void UI_Graphics::processInput()
             auto aiIndices = ai.decideCardsToReplace(state.aiHand);
             logic.replaceCards(state.aiHand, aiIndices, deck);
 
-            int pScore = logic.evaluate(state.playerHand);
-            int aScore = logic.evaluate(state.aiHand);
-            logic.updateScore(state, pScore, aScore);
-
-            state.currentPhase = RESULT;
+            state.currentPhase = REVEAL;
+            state.revealedCommunityCards = 0;
+            state.playerScoreTemp = 0;
+            state.aiScoreTemp = 0;
+            int baseBet = std::min(BASE_BET, std::min(state.playerChips, state.aiChips));
+            state.roundBet = baseBet;
+            waitingForDoubleChoice = false;
+            betStatusMessage = "Shared cards hidden. Click REVEAL to continue.";
             state.needRedraw = true;
         }
         else if (clickTitle(mx, my))
         {
             state.currentPhase = TITLE;
+            waitingForDoubleChoice = false;
+            betStatusMessage.clear();
             state.needRedraw = true;
         }
         break;
     }
 
+    case REVEAL:
+        if (waitingForDoubleChoice)
+        {
+            if (clickDouble(mx, my))
+            {
+                handlePlayerBetChoice(true);
+            }
+            else if (clickPass(mx, my))
+            {
+                handlePlayerBetChoice(false);
+            }
+        }
+        else
+        {
+            if (clickRevealNext(mx, my))
+            {
+                if (state.revealedCommunityCards < (int)state.communityCards.size())
+                {
+                    revealNextCommunityCard();
+                }
+                else
+                {
+                    concludeRevealIfReady();
+                }
+            }
+        }
+        break;
+
     case RESULT:
-        if (clickAgain(mx, my))
+        if (waitingForDoubleChoice)
+        {
+            if (clickDouble(mx, my))
+            {
+                int maxRaise = std::min(state.playerChips, state.aiChips);
+                if (state.roundBet <= 0)
+                {
+                    state.roundBet = std::min(BASE_BET, maxRaise);
+                }
+                else
+                {
+                    state.roundBet = std::min(state.roundBet * 2, maxRaise);
+                }
+                settleRound();
+            }
+            else if (clickPass(mx, my))
+            {
+                settleRound();
+            }
+            break;
+        }
+
+        if (clickAgain(mx, my) && !waitingForDoubleChoice)
         {
             logic.dealCards(state);
             state.selectedIndices.clear();
+            state.roundBet = 0;
+            waitingForDoubleChoice = false;
+            betStatusMessage.clear();
             state.currentPhase = PLAYER_TURN;
             state.needRedraw = true;
         }
         else if (clickTitle(mx, my))
         {
             state.currentPhase = TITLE;
+            waitingForDoubleChoice = false;
+            betStatusMessage.clear();
             state.needRedraw = true;
         }
         else if (clickQuit(mx, my))

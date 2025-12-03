@@ -101,7 +101,7 @@ void UI::handlePlayerTurn()
     state.selectedIndices.clear();
 
     std::string line;
-    std::getline(std::cin, line); // ÇåµôÉÏÒ»´Î¶ÁÈ¡µÄ»»ÐÐ
+    std::getline(std::cin, line); // ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½Î¶ï¿½È¡ï¿½Ä»ï¿½ï¿½ï¿½
 
     while (true)
     {
@@ -137,7 +137,7 @@ void UI::handlePlayerTurn()
         }
         else if (cmd == "done" || cmd == "stand")
         {
-            // ÓÃÒ»¸öÅÆ¶Ñ¸øÍæ¼Ò/AI »»ÅÆ£¨¼ò»¯´¦Àí£©
+            // ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Æ¶Ñ¸ï¿½ï¿½ï¿½ï¿½/AI ï¿½ï¿½ï¿½Æ£ï¿½ï¿½ò»¯´ï¿½ï¿½ï¿½ï¿½ï¿½
             Deck deck;
             deck.shuffle();
 
@@ -150,13 +150,14 @@ void UI::handlePlayerTurn()
             auto aiIndices = ai.decideCardsToReplace(state.aiHand);
             logic.replaceCards(state.aiHand, aiIndices, deck);
 
-            int pScore = logic.evaluate(state.playerHand);
-            int aScore = logic.evaluate(state.aiHand);
+            int sharedCount = static_cast<int>(state.communityCards.size());
+            int pScore = logic.evaluateWithCommunity(state.playerHand, state.communityCards, sharedCount);
+            int aScore = logic.evaluateWithCommunity(state.aiHand, state.communityCards, sharedCount);
             logic.updateScore(state, pScore, aScore);
 
             state.currentPhase = RESULT;
 
-            // ½øÈë½á¹û½çÃæÑ­»·
+            // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ­ï¿½ï¿½
             while (true)
             {
                 renderResult();
@@ -172,11 +173,11 @@ void UI::handlePlayerTurn()
                     logic.dealCards(state);
                     state.selectedIndices.clear();
                     state.currentPhase = PLAYER_TURN;
-                    break; // Ìø³ö½á¹ûÑ­»·£¬»Øµ½Íæ¼Ò»ØºÏÑ­»·
+                    break;
                 }
                 else if (cmd2 == "title")
                 {
-                    return; // »Ø mainLoop µÄ±êÌâ²Ëµ¥
+                    return; 
                 }
                 else if (cmd2 == "quit")
                 {
@@ -187,7 +188,7 @@ void UI::handlePlayerTurn()
         }
         else if (cmd == "back")
         {
-            return; // »Ø title
+            return; 
         }
         else
         {

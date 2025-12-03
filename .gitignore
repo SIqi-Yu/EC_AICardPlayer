@@ -16,3 +16,4 @@ GameApp
 build/
 out/
 .cache/
+api_config.json

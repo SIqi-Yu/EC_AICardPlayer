@@ -10,6 +10,7 @@ public:
     void dealCards(GameState& state);
     void replaceCards(Hand& h, const std::vector<int>& indices, Deck& deck);
     int evaluate(const Hand& h) const;
+    int evaluateWithCommunity(const Hand& h, const std::vector<Card>& community, int revealedCount) const;
     void updateScore(GameState& state, int pScore, int aScore);
 
 private:
