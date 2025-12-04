@@ -21,6 +21,14 @@ The computer player runs locally instead of calling a remote API. Its `AIPlayer`
 
 This strategy keeps the bot fast and offline while still playing competitively. You can tweak the number of Monte Carlo samples in `AIPlayer::MONTE_CARLO_SAMPLES` to trade accuracy for speed.
 
+### Doubling (bet) behavior
+
+- After each shared card is revealed, the bot compares its evaluated score against the player's (using the currently revealed community cards).
+- If the bot leads by more than 50,000 (score units) and the bet is below the cap, it will DOUBLE.
+- If the bot is ahead but below that margin, it has a 30% chance to DOUBLE.
+- If either side has reached the max bet, the bot passes.
+- The round bet doubles whenever either side chooses DOUBLE; results are settled using the latest bet.
+
 ## Build & Run
 
 ### macOS (clang++)
