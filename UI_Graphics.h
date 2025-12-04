@@ -90,6 +90,6 @@ private:
     void revealNextCommunityCard();
     void handlePlayerBetChoice(bool doubleIt);
     void handleAIDoubleDecision();
-    void applyDouble(bool byPlayer);
+    std::string applyDouble(bool byPlayer);
     void concludeRevealIfReady();
 };

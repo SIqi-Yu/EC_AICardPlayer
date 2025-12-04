@@ -56,7 +56,7 @@ void UI::renderGame()
     std::cout << "Your hand:\n";
     PrintHand(state.playerHand);
     std::cout << "Current score: Player " << state.playerScore
-        << "  -  AI " << state.aiScore << "\n";
+        << "  -  Bot " << state.aiScore << "\n";
     std::cout << "Commands:\n"
         << "  sel <i>      : select card index to replace\n"
         << "  done         : finish selection & replace\n"
@@ -70,7 +70,7 @@ void UI::renderResult()
     std::cout << "\n===== Result =====\n";
     std::cout << "Your final hand:\n";
     PrintHand(state.playerHand);
-    std::cout << "AI final hand:\n";
+    std::cout << "Bot final hand:\n";
     PrintHand(state.aiHand);
 
     if (state.playerScoreTemp > state.aiScoreTemp)
@@ -79,7 +79,7 @@ void UI::renderResult()
     }
     else if (state.playerScoreTemp < state.aiScoreTemp)
     {
-        std::cout << "AI wins this round.\n";
+        std::cout << "Bot wins this round.\n";
     }
     else
     {
@@ -87,7 +87,7 @@ void UI::renderResult()
     }
 
     std::cout << "Total score: Player " << state.playerScore
-        << "  -  AI " << state.aiScore << "\n";
+        << "  -  Bot " << state.aiScore << "\n";
 
     std::cout << "Commands:\n"
         << "  again  : play another round\n"

@@ -4,22 +4,22 @@ Final Project for teamTBD
 ## User Guide
 
 - Title Screen: Click `START` to play, `HOW TO PLAY` for the in-game rules overlay, or `QUIT` to exit. The right-side card emblem and background/intro art now render in the correct orientation.
-- Opening Hand: You and the AI each receive 7 private cards. Click cards to toggle selection and press `DONE` to swap the selected ones once. Press `STAND` to keep your hand.
-- Shared Cards & Betting: Three shared cards sit between players. Reveal them one by one with `REVEAL`/`SHOWDOWN`. After each reveal, choose `DOUBLE` or `PASS`; the AI reacts immediately.
+- Opening Hand: You and the bot each receive 7 private cards. Click cards to toggle selection and press `DONE` to swap the selected ones once. Press `STAND` to keep your hand.
+- Shared Cards & Betting: Three shared cards sit between players. Reveal them one by one with `REVEAL`/`SHOWDOWN`. After each reveal, you may choose `DOUBLE` or `PASS`, and the bot may also decide to double based on its hand. The round bet doubles whenever either side chooses `DOUBLE`.
 - Advice: Toggle the `Advice` button (bottom-left) to see suggested swaps and flush/pair potential based on your current hand. It will gently pulse if you are idle.
 - Results: At showdown, both hands are scored using standard poker rankings and the winner takes the current bet. Use `AGAIN` to re-deal or `TITLE` to return to the main menu.
 - Sound/Visuals: Intro splash, textured table background, enlarged right-side emblem, and looping background music. Match-end popups play success (`purchase-success.wav`) or failure (`fail-234710.wav`) cues.
 
-## AI Strategy
+## Bot Strategy
 
-The computer player no longer relies on a remote API. Instead, its `AIPlayer` class uses a Monte Carlo approach:
+The computer player runs locally instead of calling a remote API. Its `AIPlayer` class uses a Monte Carlo approach:
 
-1. Enumerate all subsets of the current 7 cards that the AI could replace (including the option of keeping everything).
+1. Enumerate all subsets of the current 7 cards that the bot could replace (including the option of keeping everything).
 2. For each subset, simulate drawing replacements from the remaining deck hundreds of times (default: 400 samples).
 3. Evaluate the resulting hand using the same scoring function as the human player and compute the average score over all simulations.
-4. Keep the subset whose estimated average score is highest, and replace those cards when the AI takes its turn.
+4. Keep the subset whose estimated average score is highest, and replace those cards when the bot takes its turn.
 
-This strategy makes the AI stronger without adding latency or external dependencies. You can tweak the number of Monte Carlo samples in `AIPlayer::MONTE_CARLO_SAMPLES` to trade accuracy for speed.
+This strategy keeps the bot fast and offline while still playing competitively. You can tweak the number of Monte Carlo samples in `AIPlayer::MONTE_CARLO_SAMPLES` to trade accuracy for speed.
 
 ## Build & Run
 
@@ -52,7 +52,3 @@ Ensure the executable can find these assets in the working directory:
 - `las-vegas-407027.wav` (background music)
 - `fail-234710.wav` (defeat cue)
 - `purchase-success.wav` (victory cue)
-
-## TODO
-
-- ui优化，字体，按钮,文件结构整理,demo等

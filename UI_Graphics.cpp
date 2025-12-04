@@ -10,6 +10,8 @@
 #include <sstream>
 #include <vector>
 #include <array>
+#include <cstring>
+#include <cstdlib>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -73,7 +75,46 @@ static inline int ButtonRowY(int row)
     return std::max(y, minY) + row * (BUTTON_HEIGHT + BUTTON_GAP);
 }
 
+static constexpr int MAIN_FONT_W = 16;
+static constexpr int MAIN_FONT_H = 20;
+static constexpr int ADVICE_FONT_W = 10;
+static constexpr int ADVICE_FONT_H = 14;
+static constexpr int INSTR_FONT_W = 12;
+static constexpr int INSTR_FONT_H = 16;
+
+static int TextWidth(const std::string& s)
+{
+    return static_cast<int>(s.size()) * MAIN_FONT_W;
+}
+
+static int TextWidth(const char* s)
+{
+    return static_cast<int>(std::strlen(s)) * MAIN_FONT_W;
+}
+
+static int AdviceTextWidth(const std::string& s)
+{
+    return static_cast<int>(s.size()) * ADVICE_FONT_W;
+}
+
+static int InstrTextWidth(const std::string& s)
+{
+    return static_cast<int>(s.size()) * INSTR_FONT_W;
+}
+
 static void DrawSmallText(int x, int y, const std::string& s)
+{
+    glRasterPos2i(x, y);
+    YsGlDrawFontBitmap16x20(s.c_str());
+}
+
+static void DrawAdviceText(int x, int y, const std::string& s)
+{
+    glRasterPos2i(x, y);
+    YsGlDrawFontBitmap10x14(s.c_str());
+}
+
+static void DrawInstrText(int x, int y, const std::string& s)
 {
     glRasterPos2i(x, y);
     YsGlDrawFontBitmap12x16(s.c_str());
@@ -653,7 +694,10 @@ void UI_Graphics::drawTitle()
         glEnd();
 
         glColor3ub(255, 255, 255);
-        DrawSmallText(bx + bw / 2 - 35, y + bh / 2 + 5, label);
+        int textW = TextWidth(label);
+        int textX = bx + (bw - textW) / 2;
+        int textY = y + (bh + MAIN_FONT_H) / 2 - 2;
+        DrawSmallText(textX, textY, label);
     };
 
     drawTitleButton(310, "START", 180, 50, 80);
@@ -687,7 +731,9 @@ static void DrawHiddenCardAt(int x, int y)
     glVertex2i(x, y + CARD_H);
     glEnd();
     glColor3ub(200, 200, 200);
-    DrawSmallText(x + CARD_W / 2 - 8, y + CARD_H / 2, "?");
+    int textX = x + (CARD_W - MAIN_FONT_W) / 2;
+    int textY = y + (CARD_H + MAIN_FONT_H) / 2 - 4;
+    DrawSmallText(textX, textY, "?");
 }
 
 void UI_Graphics::drawPlayerHand()
@@ -718,16 +764,20 @@ void UI_Graphics::drawPlayerHand()
 
     char scoreBuf[128];
     std::snprintf(scoreBuf, sizeof(scoreBuf),
-        "Score  P %d : AI %d",
+        "Score  P %d : Bot %d",
         state.playerScore, state.aiScore);
+    int scoreW = TextWidth(scoreBuf);
+    int scoreX = std::max(40, WINDOW_W - scoreW - 30);
     glColor3ub(255, 210, 110);
-    DrawSmallText(WINDOW_W - 320, 35, scoreBuf);
+    DrawSmallText(scoreX, 35, scoreBuf);
     char chipBuf[128];
     std::snprintf(chipBuf, sizeof(chipBuf),
-        "Chips  P %d : AI %d",
+        "Chips  P %d : Bot %d",
         state.playerChips, state.aiChips);
+    int chipW = TextWidth(chipBuf);
+    int chipX = std::max(40, WINDOW_W - chipW - 30);
     glColor3ub(180, 230, 255);
-    DrawSmallText(WINDOW_W - 320, 65, chipBuf);
+    DrawSmallText(chipX, 65, chipBuf);
 
     if (!state.communityCards.empty())
     {
@@ -737,13 +787,15 @@ void UI_Graphics::drawPlayerHand()
             std::min(state.revealedCommunityCards, (int)state.communityCards.size()),
             (int)state.communityCards.size());
         glColor3ub(240, 235, 150);
-        DrawSmallText(60, headerH + 15, sharedBuf);
+        DrawSmallText(60, headerH + 20, sharedBuf);
     }
 
+    const char* adviceLabel = showAdvice ? "Advice: ON" : "Advice: OFF";
+    int adviceTextW = TextWidth(adviceLabel);
     int adviceBtnX = 60;
     int adviceBtnY = WINDOW_H - 55;
-    int adviceBtnW = 140;
-    int adviceBtnH = 32;
+    int adviceBtnW = std::max(150, adviceTextW + 24);
+    int adviceBtnH = 34;
     glColor3ub(20, 10, 20);
     glBegin(GL_QUADS);
     glVertex2i(adviceBtnX, adviceBtnY);
@@ -760,7 +812,9 @@ void UI_Graphics::drawPlayerHand()
     glVertex2i(adviceBtnX, adviceBtnY + adviceBtnH);
     glEnd();
     glColor3ub(255, 255, 255);
-    DrawSmallText(adviceBtnX + 10, adviceBtnY + 20, showAdvice ? "Advice: ON" : "Advice: OFF");
+    int adviceTextX = adviceBtnX + (adviceBtnW - adviceTextW) / 2;
+    int adviceTextY = adviceBtnY + (adviceBtnH + MAIN_FONT_H) / 2 - 3;
+    DrawSmallText(adviceTextX, adviceTextY, adviceLabel);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -855,7 +909,7 @@ void UI_Graphics::drawPlayerHand()
         DrawSmallText(60, infoTop + 38, "Click cards to toggle selection, DONE to draw new ones, STAND to keep.");
     }
 
-    if (showAdvice)
+    if (showAdvice && state.currentPhase == PLAYER_TURN)
     {
         bool pulseState = false;
         if (adviceHint)
@@ -864,6 +918,11 @@ void UI_Graphics::drawPlayerHand()
             pulseState = phase < 0.5;
         }
         drawAdvicePanel(buildAdviceStrings(state.playerHand), advicePulse);
+    }
+    else if (showAdvice && state.currentPhase != PLAYER_TURN)
+    {
+        // Auto-hide advice once the player leaves their turn to avoid overlaps in later phases.
+        showAdvice = false;
     }
 }
 
@@ -933,14 +992,14 @@ void UI_Graphics::drawRoundInfo()
         }
         else if (state.aiScoreTemp > state.playerScoreTemp)
         {
-            winnerLabel = "AI";
+            winnerLabel = "Bot";
         }
 
     glColor3ub(255, 210, 140);
         DrawSmallText(x, y, ("Player: " + playerDesc).c_str());
         y += 26;
         glColor3ub(255, 140, 140);
-        DrawSmallText(x, y, ("AI: " + aiDesc).c_str());
+        DrawSmallText(x, y, ("Bot: " + aiDesc).c_str());
         y += 26;
         glColor3ub(200, 255, 180);
         DrawSmallText(x, y, ("Winner: " + std::string(winnerLabel)).c_str());
@@ -980,7 +1039,7 @@ void UI_Graphics::drawRoundInfo()
         glColor3ub(255, 190, 120);
         if (waitingForDoubleChoice)
         {
-            DrawSmallText(x, y, "Choose DOUBLE or PASS. AI reacts after you.");
+            DrawSmallText(x, y, "Choose DOUBLE or PASS.");
         }
         else if (state.revealedCommunityCards < (int)state.communityCards.size())
         {
@@ -997,7 +1056,7 @@ void UI_Graphics::drawAIHand()
 {
     glColor3ub(255, 0, 0);
     const bool showFinal = (state.currentPhase == RESULT);
-    const char* label = showFinal ? "AI Final Hand:" : "AI Hand (hidden):";
+    const char* label = showFinal ? "Bot Final Hand:" : "Bot Hand (hidden):";
     DrawSmallText(80, AIBaseY() - 20, label);
 
     int baseX = AIBaseX();
@@ -1049,7 +1108,10 @@ void UI_Graphics::drawButtons()
         glEnd();
 
         glColor3ub(255, 255, 255);
-        DrawSmallText(bx + BUTTON_WIDTH / 2 - 25, by + BUTTON_HEIGHT / 2 + 5, label);
+        int textW = TextWidth(label);
+        int textX = bx + (BUTTON_WIDTH - textW) / 2;
+        int textY = by + (BUTTON_HEIGHT + MAIN_FONT_H) / 2 - 2;
+        DrawSmallText(textX, textY, label);
     };
 
     if (state.currentPhase == PLAYER_TURN)
@@ -1150,25 +1212,65 @@ void UI_Graphics::drawInstructionsOverlay()
     glEnd();
 
     glColor3ub(255, 255, 255);
-    drawText(WINDOW_W / 2 - 160, 120, "Game Instructions");
+    int titleW = InstrTextWidth("Game Instructions");
+    DrawInstrText((WINDOW_W - titleW) / 2, 110, "Game Instructions");
 
     std::vector<std::string> lines = {
-        "Both you and the AI draw 7 private cards. You may swap any of yours once.",
+        "Both you and the bot draw 7 private cards. You may swap any of yours once.",
         "Click cards to select them, then press DONE to draw new ones.",
         "Use STAND if you want to keep the current hand and skip swapping.",
-        "Three shared cards sit between you and the AI. Reveal them one by one.",
-        "After every reveal, choose DOUBLE or PASS; the AI responds immediately.",
+        "Three shared cards sit between you and the bot. Reveal them one by one.",
+        "After every reveal, you may choose DOUBLE or PASS.",
+        "The bot can also choose to DOUBLE based on its hand strength.",
+        "The round bet doubles whenever either side chooses DOUBLE.",
         "Hands are compared using classic poker rankings (strongest to weakest):",
         "  Straight Flush > Four of a Kind > Full House > Flush > Straight",
         "  Three of a Kind > Two Pair > One Pair > High Card",
         "Winner takes the current bet from the opponent's chip stack."
     };
     glColor3ub(220, 220, 220);
-    int textY = 180;
+    int textY = 170;
+    int textX = 80;
+    int maxWidth = WINDOW_W - 2 * textX;
+    std::vector<std::string> wrapped;
     for (const auto& line : lines)
     {
-        DrawSmallText(120, textY, line);
-        textY += 32;
+        std::istringstream iss(line);
+        std::string word, current;
+        while (iss >> word)
+        {
+            std::string test = current.empty() ? word : current + " " + word;
+            if (InstrTextWidth(test) > maxWidth)
+            {
+                if (!current.empty())
+                {
+                    wrapped.push_back(current);
+                }
+                current = word;
+            }
+            else
+            {
+                current = test;
+            }
+        }
+        if (!current.empty())
+        {
+            wrapped.push_back(current);
+        }
+        wrapped.push_back(""); // extra line spacing between sentences
+    }
+
+    for (const auto& line : wrapped)
+    {
+        if (line.empty())
+        {
+            textY += INSTR_FONT_H / 2;
+            continue;
+        }
+        int lineW = InstrTextWidth(line);
+        int x = (WINDOW_W - lineW) / 2;
+        DrawInstrText(x, textY, line);
+        textY += INSTR_FONT_H + 6;
     }
 
     int bx = (WINDOW_W - BUTTON_WIDTH) / 2;
@@ -1181,13 +1283,20 @@ void UI_Graphics::drawInstructionsOverlay()
     glVertex2i(bx, by + BUTTON_HEIGHT);
     glEnd();
     glColor3ub(255, 255, 255);
-    DrawSmallText(bx + BUTTON_WIDTH / 2 - 35, by + BUTTON_HEIGHT / 2 + 5, "BACK");
+    int backTextW = TextWidth("BACK");
+    int backTextX = bx + (BUTTON_WIDTH - backTextW) / 2;
+    int backTextY = by + (BUTTON_HEIGHT + MAIN_FONT_H) / 2 - 2;
+    DrawSmallText(backTextX, backTextY, "BACK");
 }
 
 void UI_Graphics::drawEndPopup()
 {
-    const int w = 500;
-    const int h = 220;
+    const std::string footer = "Click OK to return to the title screen.";
+    int contentW = std::max(TextWidth(endPopupMessage), TextWidth(footer));
+    int w = contentW + 140;
+    w = std::max(620, w);
+    w = std::min(w, WINDOW_W - 60); // keep inside window
+    const int h = 260;
     const int x = (WINDOW_W - w) / 2;
     const int y = (WINDOW_H - h) / 2;
 
@@ -1214,7 +1323,7 @@ void UI_Graphics::drawEndPopup()
     DrawSmallText(x + 40, y + 90, endPopupMessage);
 
     glColor3ub(200, 200, 200);
-    DrawSmallText(x + 40, y + 130, "Click OK to return to the title screen.");
+    DrawSmallText(x + 40, y + 130, footer);
 
     const int btnW = 100;
     const int btnH = 40;
@@ -1228,7 +1337,10 @@ void UI_Graphics::drawEndPopup()
     glVertex2i(btnX, btnY + btnH);
     glEnd();
     glColor3ub(255, 255, 255);
-    DrawSmallText(btnX + 30, btnY + 24, "OK");
+    int okTextW = TextWidth("OK");
+    int okTextX = btnX + (btnW - okTextW) / 2;
+    int okTextY = btnY + (btnH + MAIN_FONT_H) / 2 - 2;
+    DrawSmallText(okTextX, okTextY, "OK");
 }
 
 std::vector<std::string> UI_Graphics::buildAdviceStrings(const Hand& hand) const
@@ -1335,8 +1447,8 @@ std::vector<std::string> UI_Graphics::buildAdviceStrings(const Hand& hand) const
 
 void UI_Graphics::drawAdvicePanel(const std::vector<std::string>& lines, float highlightIntensity)
 {
-    const int w = 520;
-    const int h = 160 + static_cast<int>(lines.size()) * 28;
+    const int w = 560;
+    const int h = 150 + static_cast<int>(lines.size()) * 24;
     const int x = 40;
     const int y = 420;
 
@@ -1378,25 +1490,25 @@ void UI_Graphics::drawAdvicePanel(const std::vector<std::string>& lines, float h
     glEnd();
 
     glColor3ub(255, 255, 255);
-    DrawSmallText(x + 26, y + 34, "Player Advice Panel");
+    DrawAdviceText(x + 22, y + 32, "Player Advice Panel");
 
     glColor3ub(220, 240, 255);
-    int textY = y + 66;
+    int textY = y + 60;
     for (const auto& line : lines)
     {
-        DrawSmallText(x + 26, textY, line);
-        textY += 30;
+        DrawAdviceText(x + 22, textY, line);
+        textY += 24;
     }
 
     if (intensity > 0.0f)
     {
         glColor3ub(255, 180, 180);
-        DrawSmallText(x + 26, y + h - 12, "⚡ Flashing for extra guidance.");
+        DrawAdviceText(x + 22, y + h - 16, "⚡ Flashing for extra guidance.");
     }
     else
     {
         glColor3ub(200, 200, 220);
-        DrawSmallText(x + 26, y + h - 12, "Idle to trigger a glow.");
+        DrawAdviceText(x + 22, y + h - 16, "Idle to trigger a glow.");
     }
 }
 
@@ -1427,7 +1539,7 @@ void UI_Graphics::settleRound()
             state.playerChips -= bet;
             state.aiChips += bet;
             char buf[128];
-            std::snprintf(buf, sizeof(buf), "AI wins %d chips.", bet);
+            std::snprintf(buf, sizeof(buf), "Bot wins %d chips.", bet);
             betStatusMessage = buf;
         }
         state.roundBet = 0;
@@ -1443,7 +1555,7 @@ void UI_Graphics::settleRound()
         }
         else if (state.playerChips <= 0)
         {
-            endPopupMessage = "You are out of chips. AI wins the match.";
+            endPopupMessage = "You are out of chips. Bot wins the match.";
             if (failSoundLoaded)
             {
                 soundPlayer.PlayOneShot(failSound);
@@ -1451,7 +1563,7 @@ void UI_Graphics::settleRound()
         }
         else
         {
-            endPopupMessage = "AI is out of chips. You win the match!";
+            endPopupMessage = "Bot is out of chips. You win the match!";
             if (successSoundLoaded)
             {
                 soundPlayer.PlayOneShot(successSound);
@@ -1538,7 +1650,7 @@ void UI_Graphics::handlePlayerBetChoice(bool doubleIt)
 {
     if (doubleIt)
     {
-        applyDouble(true);
+        betStatusMessage = applyDouble(true);
     }
     else
     {
@@ -1572,32 +1684,65 @@ void UI_Graphics::handleAIDoubleDecision()
 
     int aiScore = logic.evaluateWithCommunity(state.aiHand, state.communityCards, revealed);
     int playerScore = logic.evaluateWithCommunity(state.playerHand, state.communityCards, revealed);
-    const int threshold = 200000;
+    const int threshold = 50000; // lower threshold so bot reacts more often
+    int margin = aiScore - playerScore;
 
-    if (aiScore > playerScore + threshold && state.roundBet < maxBet)
+    // If already at cap, just pass.
+    if (state.roundBet >= maxBet)
     {
-        applyDouble(false);
+        if (betStatusMessage.empty())
+        {
+            betStatusMessage = "Bot passes.";
+        }
+        else
+        {
+            betStatusMessage += " Bot passes.";
+        }
+        return;
+    }
+
+    bool aiDoubles = false;
+    if (margin > threshold)
+    {
+        aiDoubles = true;
+    }
+    else if (margin >= 0)
+    {
+        // Slight edge: sometimes push the bet.
+        aiDoubles = (std::rand() % 100) < 30;
+    }
+
+    if (aiDoubles)
+    {
+        std::string aiMsg = applyDouble(false);
+        if (!aiMsg.empty())
+        {
+            if (!betStatusMessage.empty())
+            {
+                betStatusMessage += " ";
+            }
+            betStatusMessage += aiMsg;
+        }
     }
     else
     {
         if (betStatusMessage.empty())
         {
-            betStatusMessage = "AI passes.";
+            betStatusMessage = "Bot passes.";
         }
         else
         {
-            betStatusMessage += " AI passes.";
+            betStatusMessage += " Bot passes.";
         }
     }
 }
 
-void UI_Graphics::applyDouble(bool byPlayer)
+std::string UI_Graphics::applyDouble(bool byPlayer)
 {
     int maxBet = std::min(state.playerChips, state.aiChips);
     if (maxBet <= 0)
     {
-        betStatusMessage = "No chips left to raise.";
-        return;
+        return "No chips left to raise.";
     }
 
     if (state.roundBet <= 0)
@@ -1611,8 +1756,8 @@ void UI_Graphics::applyDouble(bool byPlayer)
 
     char buf[128];
     std::snprintf(buf, sizeof(buf), "%s doubles! Bet is now %d.",
-        byPlayer ? "Player" : "AI", state.roundBet);
-    betStatusMessage = buf;
+        byPlayer ? "Player" : "Bot", state.roundBet);
+    return std::string(buf);
 }
 
 void UI_Graphics::concludeRevealIfReady()
@@ -1802,6 +1947,7 @@ void UI_Graphics::processInput()
             auto aiIndices = ai.decideCardsToReplace(state.aiHand);
             logic.replaceCards(state.aiHand, aiIndices, deck);
 
+            showAdvice = false;
             state.currentPhase = REVEAL;
             state.revealedCommunityCards = 0;
             state.playerScoreTemp = 0;
@@ -1820,6 +1966,7 @@ void UI_Graphics::processInput()
             auto aiIndices = ai.decideCardsToReplace(state.aiHand);
             logic.replaceCards(state.aiHand, aiIndices, deck);
 
+            showAdvice = false;
             state.currentPhase = REVEAL;
             state.revealedCommunityCards = 0;
             state.playerScoreTemp = 0;
