@@ -6,7 +6,7 @@ Final Project for teamTBD
 - Title Screen: Click `START` to play, `HOW TO PLAY` for the in-game rules overlay, or `QUIT` to exit. The right-side card emblem and background/intro art now render in the correct orientation.
 - Opening Hand: You and the bot each receive 7 private cards. Click cards to toggle selection and press `DONE` to swap the selected ones once. Press `STAND` to keep your hand.
 - Shared Cards & Betting: Three shared cards sit between players. Reveal them one by one with `REVEAL`/`SHOWDOWN`. After each reveal, you may choose `DOUBLE` or `PASS`, and the bot may also decide to double based on its hand. The round bet doubles whenever either side chooses `DOUBLE`.
-- Advice: Toggle the `Advice` button (bottom-left) to see suggested swaps and flush/pair potential based on your current hand. It will gently pulse if you are idle.
+- Advice: Toggle the `Advice` button (bottom-left) to see suggested swaps and flush/pair potential based on your current hand.
 - Results: At showdown, both hands are scored using standard poker rankings and the winner takes the current bet. Use `AGAIN` to re-deal or `TITLE` to return to the main menu.
 - Sound/Visuals: Intro splash, textured table background, enlarged right-side emblem, and looping background music. Match-end popups play success (`purchase-success.wav`) or failure (`fail-234710.wav`) cues.
 
