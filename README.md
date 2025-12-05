@@ -1,4 +1,4 @@
-# EC_AICardPlayer
+# EC_CardPlayer
 Final Project for teamTBD
 
 ## User Guide
